@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import Login from "./Login";
+import Login from "./LoginTemp";
 import {
   Plus,
   Calendar,
@@ -1683,7 +1683,7 @@ function PatientHistoryModal({
     return () => {
       isMounted = false;
     };
-  }, [selectedPatient, history]);
+  }, [selectedPatient]);
 
   // 🔹 Profili kaydet (upsert)
   const handleSaveProfile = async () => {
