@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import Login from "./LoginTemp";
+import Login from "./Login";
 import {
   Plus,
   Calendar,
