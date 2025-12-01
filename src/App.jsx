@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import Login from './Login';
+import Login from "./Login";
 import {
   Plus,
   Calendar,
@@ -937,22 +937,22 @@ export default function ClinicAppointmentSystem() {
       {showAddModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-            <div className="flex justify-between items-center p-6 border-b bg-gradient-to-r from-pink-50 to-purple-50 rounded-t-2xl">
-              <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                <Plus className="w-6 h-6 text-pink-600" />
-                Yeni Randevu
-              </h3>
-              <button
-                onClick={() => {
-                  setShowAddModal(false);
-                  setSuggestedSlot(null);
-                  setShowPatientSuggestions(false);
-                }}
-                className="flex-1 px-4 py-3 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-100 font-medium transition-all"
-              >
-                İptal
-              </button>
-            </div>
+          <div className="flex justify-between items-center p-6 border-b bg-gradient-to-r from-pink-50 to-purple-50 rounded-t-2xl">
+            <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+              <Plus className="w-6 h-6 text-pink-600" />
+              Yeni Randevu
+            </h3>
+            <button
+              onClick={() => {
+                setShowAddModal(false);
+                setSuggestedSlot(null);
+                setShowPatientSuggestions(false);
+              }}
+              className="p-2 hover:bg-white rounded-xl transition-all"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
 
             <div className="p-6 space-y-4">
               <div>
