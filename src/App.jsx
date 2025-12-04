@@ -1227,38 +1227,28 @@ function WeekView({
                         <div className="text-gray-600 truncate">
                           {appointment.type}
                         </div>
-
-                        <div className="mt-1 flex items-center gap-2">
-                          <span
-                            className={getStatusBadgeClass(
-                              appointment.status
-                            )}
-                          >
-                            {
-                              STATUS_CONFIG[appointment.status || "planned"]
-                                ?.label
-                            }
-                          </span>
-
-                          <select
-                            value={appointment.status || "planned"}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) => {
-                              e.stopPropagation();
-                              updateAppointmentStatus(
-                                appointment.id,
-                                e.target.value
-                              );
-                            }}
-                            className="text-[10px] border border-gray-300 rounded-lg px-1.5 py-0.5 bg-white text-gray-600 hover:border-pink-400 focus:outline-none focus:ring-1 focus:ring-pink-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            {STATUS_OPTIONS.map((opt) => (
-                              <option key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                        <div className="mt-1">
+                            <select
+                              value={appointment.status || 'planned'}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                updateAppointmentStatus(
+                                  appointment.id,
+                                  e.target.value
+                                );
+                              }}
+                              className="w-full text-[10px] border border-gray-300 rounded-full px-2 py-1 
+                                bg-white text-gray-700 hover:border-pink-400 focus:outline-none 
+                                focus:ring-1 focus:ring-pink-500"
+                            >
+                              {STATUS_OPTIONS.map((opt) => (
+                                <option key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </option>
+                              ))}
+                            </select>
+                         </div>
                       </div>
                     )}
                   </div>
