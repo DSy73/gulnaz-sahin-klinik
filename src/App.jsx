@@ -1077,14 +1077,20 @@ export default function ClinicAppointmentSystem() {
           <PatientHistoryModal
             selectedPatient={selectedPatient}
             patient={selectedPatientData}
-            history={getPatientHistory(selectedPatient)}
+            getPatientHistory={getPatientHistory}
             getTypeColor={getTypeColor}
             getTypeIcon={getTypeIcon}
             onClose={() => {
               setShowPatientHistory(false);
               setSelectedPatient(null);
             }}
-            showToast={showToast}
+            onDeletePatient={async (patient) => {
+              // önce hastayı sil
+              await handleDeletePatient(patient);
+              // sonra modalı kapat
+              setShowPatientHistory(false);
+              setSelectedPatient(null);
+            }}
           />
         )}
       </div>
@@ -1495,6 +1501,7 @@ function PatientsView({
                         </button>
                       )}
                     </div>
+
                   </div>
                 </button>
               );
@@ -1671,12 +1678,13 @@ function AddAppointmentModal({ selectedSlot, onClose, onSave }) {
 function PatientHistoryModal({
   selectedPatient,
   patient,
-  history,
+  getPatientHistory,
   getTypeColor,
   getTypeIcon,
   onClose,
-  showToast,
+  onDeletePatient,   
 }) {
+
   const [profile, setProfile] = useState({
     phone: "",
     diagnosis: "",
@@ -1805,12 +1813,25 @@ function PatientHistoryModal({
               <RiskBadge history={history} patient={patient} />
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-white rounded-xl transition-all"
-          >
-            <X className="w-5 h-5" />
-          </button>
+
+          <div className="flex items-center gap-3">
+            {onDeletePatient && patient && (
+              <button
+                type="button"
+                onClick={() => onDeletePatient(patient)}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg border border-red-300 text-red-600 hover:bg-red-50"
+              >
+                Hastayı Sil
+              </button>
+            )}
+
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-white rounded-xl transition-all"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* BODY */}
