@@ -651,22 +651,22 @@ export default function ClinicAppointmentSystem() {
 
   const getPatientsWithStats = () => {
     const today = new Date();
-
+  
     const enriched = patients.map((p) => {
       const history = appointments.filter(
         (apt) => apt.patient_name === p.name
       );
-
+  
       const lastVisit = history.length
         ? history
             .map((apt) => apt.date)
             .sort((a, b) => new Date(b) - new Date(a))[0]
         : null;
-
+  
       const upcomingAppointments = history.filter(
         (apt) => !apt.completed && new Date(apt.date) >= today
       ).length;
-
+  
       return {
         id: p.id,
         name: p.name,
@@ -675,39 +675,18 @@ export default function ClinicAppointmentSystem() {
         lastVisit,
         totalVisits: history.length,
         upcomingAppointments,
-        kvkkConfirmed: p.kvkk_confirmed ?? false,   // ✅ ek bilgi
+        // 🔹 KVKK durumu (patients tablosundan geliyor)
+        kvkkApproved: p.kvkk_approved,
+        kvkkApprovedAt: p.kvkk_approved_at,
       };
-      
     });
-
+  
     return enriched.sort((a, b) => {
       if (!a.lastVisit && !b.lastVisit) return a.name.localeCompare(b.name);
       if (!a.lastVisit) return 1;
       if (!b.lastVisit) return -1;
       return new Date(b.lastVisit) - new Date(a.lastVisit);
     });
-  };
-  const handleTogglePatientKvkk = async (patientId, currentValue) => {
-    try {
-      const newValue = !currentValue;
-  
-      const { error } = await supabase
-        .from('patients')
-        .update({ kvkk_confirmed: newValue })
-        .eq('id', patientId);
-  
-      if (error) throw error;
-  
-      // state'i de güncelle
-      setPatients((prev) =>
-        prev.map((p) =>
-          p.id === patientId ? { ...p, kvkk_confirmed: newValue } : p
-        )
-      );
-    } catch (err) {
-      console.error('KVKK durumu güncellenirken hata:', err);
-      alert('KVKK durumu güncellenemedi: ' + err.message);
-    }
   };
   
   const stats = {
@@ -1636,33 +1615,34 @@ function PatientsView({
                               {patient.phone}
                             </div>
                           )}
-                          <div className="mt-2">
-                            <RiskBadge
-                              history={patientHistory}
-                              patient={patient}
-                            />
-                          </div>
-                          {/* KVKK Durumu - Tıklanabilir */}
-                            <div className="mt-2">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation(); // karta tıklama olayını engelle (yoksa history açılır)
-                                  if (onToggleKvkk) {
-                                    onToggleKvkk(patient.id, patient.kvkkConfirmed);
-                                  }
-                                }}
-                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border transition-colors
-                                  ${
-                                    patient.kvkkConfirmed
-                                      ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
-                                      : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
-                                  }`}
-                              >
-                                KVKK Formu: {patient.kvkkConfirmed ? 'Alındı' : 'Eksik'}
-                              </button>
-                            </div>
-                          </div>
+                          <div className="mt-2 space-y-2">
+                          <RiskBadge
+                            history={patientHistory}
+                            patient={patient}
+                          />
+
+                          {/* KVKK Etiketi */}
+                          {patient.kvkkApproved ? (
+                            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              KVKK Formu: Var
+                              {patient.kvkkApprovedAt && (
+                                <span className="ml-2 text-[10px] opacity-70">
+                                  (
+                                  {new Date(patient.kvkkApprovedAt).toLocaleDateString(
+                                    'tr-TR',
+                                    { day: 'numeric', month: 'short', year: 'numeric' }
+                                  )}
+                                  )
+                                </span>
+                              )}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                              KVKK Formu: Eksik
+                            </span>
+                          )}
+                        </div>
+
                         </div>
                       </div>
                       {patient.lastVisit && (
@@ -1744,7 +1724,10 @@ function PatientHistoryModal({
     phone: '',
     diagnosis: '',
     notes: '',
+    kvkk_approved: false,
+    kvkk_approved_at: null,
   });
+  
   const [loadingProfile, setLoadingProfile] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
 
@@ -1768,11 +1751,14 @@ function PatientHistoryModal({
         const lastPhone =
           history && history.length > 0 ? history[0].phone || '' : '';
 
-        setProfile({
-          phone: data?.phone ?? lastPhone,
-          diagnosis: data?.diagnosis ?? '',
-          notes: data?.notes ?? '',
-        });
+          setProfile({
+            phone: data?.phone ?? lastPhone,
+            diagnosis: data?.diagnosis ?? '',
+            notes: data?.notes ?? '',
+            kvkk_approved: patient?.kvkk_approved ?? false,
+            kvkk_approved_at: patient?.kvkk_approved_at ?? null,
+          });
+          
       } catch (err) {
         console.error('Hasta profili yüklenirken beklenmeyen hata:', err);
       } finally {
@@ -1790,24 +1776,44 @@ function PatientHistoryModal({
   const handleSaveProfile = async () => {
     try {
       setSaving(true);
-
+  
+      // 1) patient_profiles için payload
       const payload = {
         patient_name: selectedPatient,
         phone: profile.phone || null,
         diagnosis: profile.diagnosis || null,
         notes: profile.notes || null,
       };
-
+  
       const { error } = await supabase
         .from('patient_profiles')
         .upsert(payload, { onConflict: 'patient_name' });
-
+  
       if (error) {
         console.error('Hasta profili kaydedilirken hata:', error);
         alert('Hasta profili kaydedilemedi: ' + error.message);
         return;
       }
-
+  
+      // 2) patients tablosunda KVKK durumunu güncelle
+      if (patient?.id) {
+        const { error: kvkkError } = await supabase
+          .from('patients')
+          .update({
+            kvkk_approved: profile.kvkk_approved,
+            kvkk_approved_at: profile.kvkk_approved
+              ? profile.kvkk_approved_at
+              : null,
+          })
+          .eq('id', patient.id);
+  
+        if (kvkkError) {
+          console.error('KVKK güncellenirken hata:', kvkkError);
+          alert('KVKK bilgisi güncellenemedi: ' + kvkkError.message);
+          return;
+        }
+      }
+  
       alert('Hasta profili kaydedildi.');
     } catch (err) {
       console.error('Hasta profili kaydedilirken beklenmeyen hata:', err);
@@ -1816,6 +1822,7 @@ function PatientHistoryModal({
       setSaving(false);
     }
   };
+  
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
@@ -1954,6 +1961,39 @@ function PatientHistoryModal({
               )}
             </div>
           </div>
+          {/* KVKK Onayı */}
+            <div className="mt-4 flex items-center gap-3">
+              <input
+                type="checkbox"
+                checked={profile.kvkk_approved || false}
+                onChange={(e) =>
+                  setProfile((prev) => ({
+                    ...prev,
+                    kvkk_approved: e.target.checked,
+                    kvkk_approved_at: e.target.checked
+                      ? prev.kvkk_approved_at || new Date().toISOString()
+                      : null,
+                  }))
+                }
+                className="w-4 h-4 text-pink-600 border-gray-300 rounded focus:ring-pink-500"
+              />
+              <div className="flex flex-col">
+                <span className="text-sm font-medium text-gray-700">
+                  KVKK Aydınlatma Metni ve Açık Rıza Formu Hastadan Alındı
+                </span>
+                {profile.kvkk_approved && profile.kvkk_approved_at && (
+                  <span className="text-[11px] text-gray-500 mt-0.5">
+                    Alınma tarihi:{' '}
+                    {new Date(profile.kvkk_approved_at).toLocaleDateString('tr-TR', {
+                      day: 'numeric',
+                      month: 'long',
+                      year: 'numeric',
+                    })}
+                  </span>
+                )}
+              </div>
+            </div>
+
 
           {/* RANDEVU GEÇMİŞİ LİSTESİ */}
           <div className="space-y-4">
