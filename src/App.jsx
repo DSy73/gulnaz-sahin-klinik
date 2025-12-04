@@ -18,6 +18,7 @@ import {
   AlertCircle,
   CheckCircle,
   User,
+  Trash2,
 } from "lucide-react";
 import logoGulnaz from "./assets/GS-KD-Logo.png";
 
@@ -572,6 +573,56 @@ export default function ClinicAppointmentSystem() {
       showToast("Randevu eklenemedi!", "error");
     }
   };
+  const handleDeleteAppointment = async (id) => {
+    if (!window.confirm('Bu randevuyu tamamen silmek istediğinize emin misiniz?')) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('appointments')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setAppointments((prev) => prev.filter((apt) => apt.id !== id));
+    } catch (error) {
+      console.error('Randevu silinirken hata:', error);
+      alert('Randevu silinemedi: ' + error.message);
+    }
+  };
+
+  const handleDeletePatient = async (patient) => {
+    if (!window.confirm(`"${patient.name}" hastasını silmek istediğinize emin misiniz?`)) {
+      return;
+    }
+
+    const hasAppointments = appointments.some(
+      (apt) => apt.patient_name === patient.name
+    );
+
+    if (hasAppointments) {
+      alert(
+        'Bu hastaya bağlı randevular var. Önce bu hastanın randevularını silmeniz gerekiyor.'
+      );
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('patients')
+        .delete()
+        .eq('id', patient.id);
+
+      if (error) throw error;
+
+      setPatients((prev) => prev.filter((p) => p.id !== patient.id));
+    } catch (error) {
+      console.error('Hasta silinirken hata:', error);
+      alert('Hasta silinemedi: ' + error.message);
+    }
+  };
 
   // ----------------------- PATIENT SAVE -----------------------
 
@@ -852,6 +903,7 @@ export default function ClinicAppointmentSystem() {
                 setSelectedPatient(name);
                 setShowPatientHistory(true);
               }}
+              onDeleteAppointment={handleDeleteAppointment}
             />
           )}
 
@@ -865,6 +917,7 @@ export default function ClinicAppointmentSystem() {
                 setShowPatientHistory(true);
               }}
               onAddPatient={() => setShowPatientForm(true)}
+              onDeletePatient={handleDeletePatient}  
             />
           )}
         </div>
@@ -1050,6 +1103,7 @@ function DayView({
   getTypeIcon,
   handleUpdateStatus,
   openPatientHistory,
+  onDeleteAppointment,
 }) {
   return (
     <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
@@ -1110,8 +1164,8 @@ function DayView({
 
                         {appointment.phone && (
                           <span className="text-xs text-gray-600 flex items-center gap-1">
-                            <Phone className="w-3 h-3" />
                             {appointment.phone}
+                            <Phone className="w-3 h-3" />
                           </span>
                         )}
                       </div>
@@ -1119,7 +1173,7 @@ function DayView({
 
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <select
-                        value={appointment.status || "planned"}
+                        value={appointment.status}
                         onClick={(e) => e.stopPropagation()}
                         onChange={(e) => {
                           e.stopPropagation();
@@ -1127,13 +1181,24 @@ function DayView({
                         }}
                         className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-pink-400"
                       >
-                        {STATUS_OPTIONS.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
+                        <option value="planned">Beklemede</option>
+                        <option value="completed">Tamamlandı</option>
+                        <option value="no_show">Gelmedi</option>
+                        <option value="cancelled">İptal</option>
                       </select>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDeleteAppointment(appointment.id);
+                        }}
+                        className="p-1.5 rounded-lg border border-gray-300 hover:bg-red-50 transition-all"
+                      >
+                        <Trash2 className="w-3 h-3 text-red-500" />
+                      </button>
                     </div>
+
                   </div>
                 )}
               </div>
@@ -1157,6 +1222,7 @@ function WeekView({
   getDateString,
   updateAppointmentStatus,
   openPatientHistory,
+  onDeleteAppointment,
 }) {
   return (
     <div className="bg-white rounded-2xl shadow-lg overflow-x-auto">
@@ -1227,30 +1293,41 @@ function WeekView({
                         <div className="text-gray-600 truncate">
                           {appointment.type}
                         </div>
-                        <div className="mt-1">
-                            <select
-                              value={appointment.status || 'planned'}
-                              onClick={(e) => e.stopPropagation()}
-                              onChange={(e) => {
-                                e.stopPropagation();
-                                updateAppointmentStatus(
-                                  appointment.id,
-                                  e.target.value
-                                );
-                              }}
-                              className="w-full text-[10px] border border-gray-300 rounded-full px-2 py-1 
-                                bg-white text-gray-700 hover:border-pink-400 focus:outline-none 
-                                focus:ring-1 focus:ring-pink-500"
-                            >
-                              {STATUS_OPTIONS.map((opt) => (
-                                <option key={opt.value} value={opt.value}>
-                                  {opt.label}
-                                </option>
-                              ))}
-                            </select>
-                         </div>
+                        <div className="mt-1 flex items-center gap-1">
+                          <select
+                            value={appointment.status || 'planned'}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              updateAppointmentStatus(
+                                appointment.id,
+                                e.target.value
+                              );
+                            }}
+                            className="flex-1 text-[10px] border border-gray-300 rounded-full px-2 py-1 
+                              bg-white text-gray-700 hover:border-pink-400 focus:outline-none 
+                              focus:ring-1 focus:ring-pink-500"
+                          >
+                            {STATUS_OPTIONS.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDeleteAppointment(appointment.id);
+                            }}
+                            className="p-1 rounded-lg border border-gray-300 hover:bg-red-50"
+                          >
+                            <Trash2 className="w-3 h-3 text-red-500" />
+                          </button>
+                        </div>
                       </div>
-                    )}
+                        )}
                   </div>
                 );
               })}
@@ -1271,6 +1348,7 @@ function PatientsView({
   getPatientHistory,
   openPatientHistory,
   onAddPatient,
+  onDeletePatient,
 }) {
   return (
     <div className="bg-white rounded-2xl shadow-lg">
@@ -1384,22 +1462,37 @@ function PatientsView({
                         </div>
                       )}
                     </div>
-                    <div className="flex gap-3">
-                      <div className="text-center bg-white rounded-xl px-4 py-3 border-2 border-pink-200 shadow-sm">
-                        <div className="text-2xl font-bold text-pink-600">
-                          {patient.totalVisits}
-                        </div>
-                        <div className="text-xs text-gray-600 mt-1">
-                          Ziyaret
-                        </div>
-                      </div>
-                      {patient.upcomingAppointments > 0 && (
-                        <div className="text-center bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl px-4 py-3 shadow-lg">
-                          <div className="text-2xl font-bold">
-                            {patient.upcomingAppointments}
+                    <div className="flex flex-col items-end gap-2">
+                      <div className="flex gap-3">
+                        <div className="text-center bg-white rounded-xl px-4 py-3 border-2 border-pink-200 shadow-sm">
+                          <div className="text-2xl font-bold text-pink-600">
+                            {patient.totalVisits}
                           </div>
-                          <div className="text-xs mt-1">Yaklaşan</div>
+                          <div className="text-xs text-gray-600 mt-1">
+                            Ziyaret
+                          </div>
                         </div>
+                        {patient.upcomingAppointments > 0 && (
+                          <div className="text-center bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl px-4 py-3 shadow-lg">
+                            <div className="text-2xl font-bold">
+                              {patient.upcomingAppointments}
+                            </div>
+                            <div className="text-xs mt-1">Yaklaşan</div>
+                          </div>
+                        )}
+                      </div>
+
+                      {onDeletePatient && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeletePatient(patient);
+                          }}
+                          className="text-xs text-red-600 hover:text-red-700 hover:underline"
+                        >
+                          Hastayı Sil
+                        </button>
                       )}
                     </div>
                   </div>
