@@ -1238,9 +1238,9 @@ function WeekView({
   getDateString,
   updateAppointmentStatus,
   openPatientHistory,
+  onDeleteAppointment,
   STATUS_OPTIONS,   
-})
-
+}) {
   return (
     <div className="bg-white rounded-2xl shadow-lg overflow-x-auto">
       <div className="p-6 border-b bg-gradient-to-r from-pink-50 to-purple-50">
@@ -1358,8 +1358,6 @@ function WeekView({
 
 
 // ----------------------------- Patients View -----------------------------
-/* ----------------------------- Patients View ----------------------------- */
-
 function PatientsView({
   patients,
   appointments,
@@ -1538,7 +1536,7 @@ function PatientsView({
     </div>
   );
 }
-
+/* ----------------------------- Patients View ----------------------------- */
 // ------------------------- AddAppointment Modal --------------------------
 
 function AddAppointmentModal({ selectedSlot, onClose, onSave }) {
