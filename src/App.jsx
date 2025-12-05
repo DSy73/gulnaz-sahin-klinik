@@ -1136,6 +1136,7 @@ export default function ClinicAppointmentSystem() {
               setShowPatientHistory(false);
               setSelectedPatient(null);
             }}
+            showToast={showToast}
           />
         )}
       </div>
@@ -1347,22 +1348,34 @@ function WeekView({
                         }
                         className={`${getTypeColor(
                           appointment.type
-                        )} w-full min-h-[96px] rounded-xl px-3 py-2 border-l-4 text-xs shadow-sm 
-                          hover:shadow-md transition-all group flex flex-col gap-1.5 justify-between 
+                        )} w-full h-[90px] rounded-xl px-3 py-2 border-l-4 text-xs shadow-sm 
+                          hover:shadow-md transition-all group flex flex-col justify-between 
                           cursor-pointer`}
                       >
-                        {/* Hasta adı */}
-                        <div className="font-bold text-gray-800 truncate">
-                          {appointment.patient_name}
+                        {/* ÜST SATIR: İSİM + TÜR + SAĞDA SİL */}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="font-bold text-gray-800 truncate">
+                              {appointment.patient_name}
+                            </div>
+                            <div className="text-gray-600 truncate text-[11px]">
+                              {appointment.type}
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDeleteAppointment(appointment.id);
+                            }}
+                            className="text-[10px] text-red-600 hover:text-red-800 underline flex-shrink-0"
+                          >
+                            Sil
+                          </button>
                         </div>
 
-                        {/* Randevu tipi */}
-                        <div className="text-gray-600 truncate text-[11px]">
-                          {appointment.type}
-                        </div>
-
-                        {/* Durum dropdown */}
-                        <div className="mt-1">
+                        {/* ALTTA TEK SATIR DROPDOWN */}
+                        <div>
                           <select
                             value={appointment.status || 'planned'}
                             onClick={(e) => e.stopPropagation()}
@@ -1384,17 +1397,6 @@ function WeekView({
                             <option value="cancelled">İptal</option>
                           </select>
                         </div>
-
-                        {/* Sil butonu */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onDeleteAppointment(appointment.id);
-                          }}
-                          className="mt-1 text-[10px] text-red-600 hover:text-red-800 underline"
-                        >
-                          Sil
-                        </button>
                       </div>
                     )}
                   </div>
@@ -1517,14 +1519,14 @@ function PatientsView({
                               />
 
                               {/* KVKK Etiketi */}
-                              {patient.kvkkApproved ? (
+                              {patient.kvkk_approved ? (
                                 <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
                                   KVKK Formu: Var
-                                  {patient.kvkkApprovedAt && (
+                                  {patient.kvkk_approved_at  && (
                                     <span className="ml-2 text-[10px] opacity-70">
                                       (
                                       {new Date(
-                                        patient.kvkkApprovedAt
+                                        patient.kvkk_approved_at
                                       ).toLocaleDateString('tr-TR', {
                                         day: 'numeric',
                                         month: 'short',
@@ -1803,7 +1805,8 @@ function PatientHistoryModal({
   getTypeColor,
   getTypeIcon,
   onClose,
-  onDeletePatient,   
+  onDeletePatient,
+  showToast,
 }) {
   const history = getPatientHistory ? getPatientHistory(selectedPatient) : [];
 
