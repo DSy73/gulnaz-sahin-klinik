@@ -1228,6 +1228,7 @@ function DayView({
 
 
 // ------------------------------- Week View --------------------------------
+/* ------------------------------- Week View -------------------------------- */
 
 function WeekView({
   weekDates,
@@ -1239,10 +1240,11 @@ function WeekView({
   updateAppointmentStatus,
   openPatientHistory,
   onDeleteAppointment,
-  STATUS_OPTIONS,   
+  STATUS_OPTIONS,
 }) {
   return (
     <div className="bg-white rounded-2xl shadow-lg overflow-x-auto">
+      {/* HEADER */}
       <div className="p-6 border-b bg-gradient-to-r from-pink-50 to-purple-50">
         <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
           <Calendar className="w-5 h-5 text-pink-600" />
@@ -1250,32 +1252,39 @@ function WeekView({
         </h3>
       </div>
 
+      {/* BODY */}
       <div className="p-6">
         <div className="grid grid-cols-8 gap-3 w-full">
+          {/* Sol taraftaki saat kolonunun başlığı boş */}
           <div className="w-20" />
+
+          {/* Gün başlıkları */}
           {weekDates.map((date) => (
             <div
               key={date.toString()}
               className="text-center bg-gradient-to-br from-pink-50 to-purple-50 rounded-xl p-3"
             >
               <div className="font-bold text-gray-800 text-lg">
-                {date.toLocaleDateString("tr-TR", { weekday: "short" })}
+                {date.toLocaleDateString('tr-TR', { weekday: 'short' })}
               </div>
               <div className="text-sm text-gray-600">
-                {date.toLocaleDateString("tr-TR", {
-                  day: "numeric",
-                  month: "short",
+                {date.toLocaleDateString('tr-TR', {
+                  day: 'numeric',
+                  month: 'short',
                 })}
               </div>
             </div>
           ))}
 
+          {/* Saat satırları */}
           {workingHours.map((time) => (
             <React.Fragment key={time}>
+              {/* Sol tarafta saat yazan kolon */}
               <div className="w-20 text-gray-600 font-semibold pt-3 text-center">
                 {time}
               </div>
 
+              {/* Her gün için hücreler */}
               {weekDates.map((date) => {
                 const dateStr = getDateString(date);
                 const appointment = appointments.find(
@@ -1290,7 +1299,10 @@ function WeekView({
                     {available ? (
                       <button
                         onClick={() => openAddModal(time, date)}
-                        className="w-full h-[90px] border-2 border-dashed border-gray-200 rounded-xl px-3 py-2 hover:border-pink-400 hover:bg-pink-50 transition-all text-xs text-gray-400 hover:text-pink-600 flex items-center justify-center"
+                        className="w-full h-[90px] border-2 border-dashed border-gray-200 rounded-xl 
+                          px-3 py-2 hover:border-pink-400 hover:bg-pink-50 transition-all 
+                          text-xs text-gray-400 hover:text-pink-600
+                          flex items-center justify-center"
                       >
                         <Plus className="w-4 h-4 mx-auto" />
                       </button>
@@ -1301,7 +1313,9 @@ function WeekView({
                         }
                         className={`${getTypeColor(
                           appointment.type
-                        )} w-full h-[90px] rounded-xl px-3 py-2 border-l-4 text-xs shadow-sm hover:shadow-md transition-all group flex flex-col justify-between cursor-pointer`}
+                        )} w-full h-[90px] rounded-xl px-3 py-2 border-l-4 text-xs shadow-sm 
+                          hover:shadow-md transition-all group flex flex-col justify-between 
+                          cursor-pointer`}
                       >
                         <div className="font-bold text-gray-800 truncate mb-1">
                           {appointment.patient_name}
@@ -1310,7 +1324,9 @@ function WeekView({
                         <div className="text-gray-600 truncate">
                           {appointment.type}
                         </div>
-                        <div className="mt-1 flex items-center gap-1">
+
+                        {/* TEK dropdown – durum değiştirme */}
+                        <div className="mt-1">
                           <select
                             value={appointment.status || 'planned'}
                             onClick={(e) => e.stopPropagation()}
@@ -1321,30 +1337,29 @@ function WeekView({
                                 e.target.value
                               );
                             }}
-                            className="flex-1 text-[10px] border border-gray-300 rounded-full px-2 py-1 
+                            className="w-full text-[10px] border border-gray-300 rounded-full px-2 py-1 
                               bg-white text-gray-700 hover:border-pink-400 focus:outline-none 
                               focus:ring-1 focus:ring-pink-500"
                           >
-                            {STATUS_OPTIONS.map((opt) => (
-                              <option key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </option>
-                            ))}
+                            <option value="planned">Beklemede</option>
+                            <option value="completed">Tamamlandı</option>
+                            <option value="no_show">Gelmedi</option>
+                            <option value="cancelled">İptal</option>
                           </select>
-
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onDeleteAppointment(appointment.id);
-                            }}
-                            className="p-1 rounded-lg border border-gray-300 hover:bg-red-50"
-                          >
-                            <Trash2 className="w-3 h-3 text-red-500" />
-                          </button>
                         </div>
+                        {/* SİL BUTONU */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteAppointment(appointment);
+                          }}
+                          className="text-[10px] text-red-600 hover:text-red-800 underline"
+                        >
+                          Sil
+                        </button>
+
                       </div>
-                        )}
+                    )}
                   </div>
                 );
               })}
@@ -1355,7 +1370,6 @@ function WeekView({
     </div>
   );
 }
-
 
 // ----------------------------- Patients View -----------------------------
 function PatientsView({
