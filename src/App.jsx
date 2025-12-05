@@ -573,57 +573,66 @@ export default function ClinicAppointmentSystem() {
       showToast("Randevu eklenemedi!", "error");
     }
   };
-  const handleDeleteAppointment = async (id) => {
-    if (!window.confirm('Bu randevuyu tamamen silmek istediğinize emin misiniz?')) {
-      return;
-    }
+
+  // 🔹 Hasta + ilgili kayıtları sil
+  const handleDeletePatient = async (patient) => {
+    if (!patient) return;
+
+    const confirmed = window.confirm(
+      `"${patient.name}" adlı hastayı ve ona ait randevuları silmek istediğinize emin misiniz?`
+    );
+    if (!confirmed) return;
 
     try {
-      const { error } = await supabase
+      // 1) Hasta profilini sil (varsa)
+      await supabase
+        .from('patient_profiles')
+        .delete()
+        .eq('patient_name', patient.name);
+
+      // 2) Randevuları sil (isim üzerinden)
+      await supabase
         .from('appointments')
         .delete()
-        .eq('id', id);
+        .eq('patient_name', patient.name);
 
-      if (error) throw error;
+      // 3) Hastayı sil
+      if (patient.id) {
+        await supabase
+          .from('patients')
+          .delete()
+          .eq('id', patient.id);
+      } else {
+        // Her ihtimale karşı: id yoksa isme göre
+        await supabase
+          .from('patients')
+          .delete()
+          .eq('name', patient.name);
+      }
 
-      setAppointments((prev) => prev.filter((apt) => apt.id !== id));
-    } catch (error) {
-      console.error('Randevu silinirken hata:', error);
-      alert('Randevu silinemedi: ' + error.message);
-    }
-  };
-
-  const handleDeletePatient = async (patient) => {
-    if (!window.confirm(`"${patient.name}" hastasını silmek istediğinize emin misiniz?`)) {
-      return;
-    }
-
-    const hasAppointments = appointments.some(
-      (apt) => apt.patient_name === patient.name
-    );
-
-    if (hasAppointments) {
-      alert(
-        'Bu hastaya bağlı randevular var. Önce bu hastanın randevularını silmeniz gerekiyor.'
+      // 4) React state’lerini güncelle
+      setPatients((prev) => prev.filter((p) => p.name !== patient.name));
+      setAppointments((prev) =>
+        prev.filter((a) => a.patient_name !== patient.name)
       );
-      return;
-    }
 
-    try {
-      const { error } = await supabase
-        .from('patients')
-        .delete()
-        .eq('id', patient.id);
+      // 5) Eğer hasta profili açıksa kapat
+      if (selectedPatient === patient.name) {
+        setSelectedPatient(null);
+        setShowPatientHistory(false);
+      }
 
-      if (error) throw error;
-
-      setPatients((prev) => prev.filter((p) => p.id !== patient.id));
-    } catch (error) {
-      console.error('Hasta silinirken hata:', error);
-      alert('Hasta silinemedi: ' + error.message);
+      setToast({
+        show: true,
+        message: 'Hasta ve randevuları silindi.',
+        type: 'success',
+      });
+      setTimeout(() => setToast((t) => ({ ...t, show: false })), 2500);
+    } catch (err) {
+      console.error('Hasta silinirken hata:', err);
+      alert('Hasta silinemedi: ' + err.message);
     }
   };
-
   // ----------------------- PATIENT SAVE -----------------------
 
   const handleSavePatient = async () => {
@@ -670,7 +679,7 @@ export default function ClinicAppointmentSystem() {
       setPatientFormLoading(false);
     }
   };
-
+  
   // ----------------------- AUTH GUARDS -----------------------
 
   if (checkingAuth) {
@@ -1347,6 +1356,7 @@ function WeekView({
 
 
 // ----------------------------- Patients View -----------------------------
+/* ----------------------------- Patients View ----------------------------- */
 
 function PatientsView({
   patients,
@@ -1358,6 +1368,7 @@ function PatientsView({
 }) {
   return (
     <div className="bg-white rounded-2xl shadow-lg">
+      {/* HEADER */}
       <div className="p-6 border-b bg-gradient-to-r from-pink-50 to-purple-50">
         <div className="flex justify-between items-center">
           <div>
@@ -1370,6 +1381,7 @@ function PatientsView({
                 Toplam {patients.length} hasta
               </p>
               <div className="mt-2">
+                {/* Genel risk etiketi (tüm randevular üzerinden) */}
                 <RiskBadge history={appointments} />
               </div>
             </div>
@@ -1384,6 +1396,8 @@ function PatientsView({
           </button>
         </div>
       </div>
+
+      {/* BODY */}
       <div className="p-6">
         {patients.length === 0 ? (
           <div className="text-center py-12 text-gray-500">
@@ -1401,74 +1415,97 @@ function PatientsView({
                 : [];
 
               return (
-                <button
+                <div
                   key={patient.id ?? patient.name}
-                  onClick={() => openPatientHistory(patient.name)}
-                  className="bg-gradient-to-r from-pink-50 via-purple-50 to-blue-50 rounded-xl p-6 hover:shadow-lg transition-all text-left border-2 border-transparent hover:border-pink-300 group"
+                  className="relative"
                 >
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className="bg-gradient-to-br from-pink-500 to-purple-600 p-3 rounded-xl">
-                          <User className="w-6 h-6 text-white" />
-                        </div>
-                        <div>
-                          <div className="font-bold text-gray-800 text-xl group-hover:text-pink-600 transition-colors">
-                            {patient.name}
-                          </div>
-                          {patient.phone && (
-                            <div className="text-sm text-gray-600 flex items-center gap-1 mt-1">
-                              <Phone className="w-3 h-3" />
-                              {patient.phone}
-                            </div>
-                          )}
-                          <div className="mt-2 space-y-2">
-                            <RiskBadge
-                              history={patientHistory}
-                              patient={patient}
-                            />
+                  {/* 🗑 HASTAYI SİL BUTONU */}
+                  <div className="absolute top-3 right-3 z-10">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation(); // karta tıklamayı tetiklemesin
+                        onDeletePatient(patient);
+                      }}
+                      className="px-3 py-1 text-xs bg-red-100 text-red-700 rounded-lg hover:bg-red-200"
+                    >
+                      Hastayı Sil
+                    </button>
+                  </div>
 
-                            {patient.kvkk_approved ? (
-                              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                KVKK Formu: Var
-                                {patient.kvkk_approved_at && (
-                                  <span className="ml-2 text-[10px] opacity-70">
-                                    (
-                                    {new Date(
-                                      patient.kvkk_approved_at
-                                    ).toLocaleDateString("tr-TR", {
-                                      day: "numeric",
-                                      month: "short",
-                                      year: "numeric",
-                                    })}
-                                    )
-                                  </span>
-                                )}
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
-                                KVKK Formu: Eksik
-                              </span>
+                  {/* HASTA KARTI */}
+                  <button
+                    onClick={() => openPatientHistory(patient.name)}
+                    className="w-full bg-gradient-to-r from-pink-50 via-purple-50 to-blue-50 rounded-xl p-6 hover:shadow-lg transition-all text-left border-2 border-transparent hover:border-pink-300 group"
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="bg-gradient-to-br from-pink-500 to-purple-600 p-3 rounded-xl">
+                            <User className="w-6 h-6 text-white" />
+                          </div>
+
+                          <div>
+                            <div className="font-bold text-gray-800 text-xl group-hover:text-pink-600 transition-colors">
+                              {patient.name}
+                            </div>
+
+                            {patient.phone && (
+                              <div className="text-sm text-gray-600 flex items-center gap-1 mt-1">
+                                <Phone className="w-3 h-3" />
+                                {patient.phone}
+                              </div>
                             )}
+
+                            <div className="mt-2 space-y-2">
+                              {/* Kişiye özel risk etiketi */}
+                              <RiskBadge
+                                history={patientHistory}
+                                patient={patient}
+                              />
+
+                              {/* KVKK Etiketi */}
+                              {patient.kvkkApproved ? (
+                                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  KVKK Formu: Var
+                                  {patient.kvkkApprovedAt && (
+                                    <span className="ml-2 text-[10px] opacity-70">
+                                      (
+                                      {new Date(
+                                        patient.kvkkApprovedAt
+                                      ).toLocaleDateString('tr-TR', {
+                                        day: 'numeric',
+                                        month: 'short',
+                                        year: 'numeric',
+                                      })}
+                                      )
+                                    </span>
+                                  )}
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                                  KVKK Formu: Eksik
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
+
+                        {patient.lastVisit && (
+                          <div className="text-sm text-gray-600 flex items-center gap-2">
+                            <Calendar className="w-4 h-4" />
+                            Son ziyaret:{' '}
+                            {new Date(
+                              patient.lastVisit
+                            ).toLocaleDateString('tr-TR', {
+                              day: 'numeric',
+                              month: 'long',
+                              year: 'numeric',
+                            })}
+                          </div>
+                        )}
                       </div>
 
-                      {patient.lastVisit && (
-                        <div className="text-sm text-gray-600 flex items-center gap-2">
-                          <Calendar className="w-4 h-4" />
-                          Son ziyaret:{" "}
-                          {new Date(
-                            patient.lastVisit
-                          ).toLocaleDateString("tr-TR", {
-                            day: "numeric",
-                            month: "long",
-                            year: "numeric",
-                          })}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex flex-col items-end gap-2">
+                      {/* Sayaç kutuları */}
                       <div className="flex gap-3">
                         <div className="text-center bg-white rounded-xl px-4 py-3 border-2 border-pink-200 shadow-sm">
                           <div className="text-2xl font-bold text-pink-600">
@@ -1478,6 +1515,7 @@ function PatientsView({
                             Ziyaret
                           </div>
                         </div>
+
                         {patient.upcomingAppointments > 0 && (
                           <div className="text-center bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl px-4 py-3 shadow-lg">
                             <div className="text-2xl font-bold">
@@ -1487,23 +1525,9 @@ function PatientsView({
                           </div>
                         )}
                       </div>
-
-                      {onDeletePatient && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onDeletePatient(patient);
-                          }}
-                          className="text-xs text-red-600 hover:text-red-700 hover:underline"
-                        >
-                          Hastayı Sil
-                        </button>
-                      )}
                     </div>
-
-                  </div>
-                </button>
+                  </button>
+                </div>
               );
             })}
           </div>
@@ -1512,7 +1536,6 @@ function PatientsView({
     </div>
   );
 }
-
 
 // ------------------------- AddAppointment Modal --------------------------
 
@@ -1684,6 +1707,7 @@ function PatientHistoryModal({
   onClose,
   onDeletePatient,   
 }) {
+  const history = getPatientHistory ? getPatientHistory(selectedPatient) : [];
 
   const [profile, setProfile] = useState({
     phone: "",
