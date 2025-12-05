@@ -1587,9 +1587,9 @@ function PatientsView({
 /* ----------------------------- Patients View ----------------------------- */
 // ------------------------- AddAppointment Modal --------------------------
 
-function AddAppointmentModal({ selectedSlot, onClose, onSave }) {
-  const [showSuggestions, setShowSuggestions] = useState(false);
+// ------------------------- AddAppointment Modal --------------------------
 
+function AddAppointmentModal({ selectedSlot, onClose, onSave, patients = [] }) {
   const [form, setForm] = useState({
     patientName: "",
     phone: "",
@@ -1598,12 +1598,20 @@ function AddAppointmentModal({ selectedSlot, onClose, onSave }) {
     notes: "",
   });
 
-  const matchingPatients = patients?.filter((p) =>
-    form.patientName
-      ? p.name.toLowerCase().includes(form.patientName.toLowerCase())
-      : false
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  const matchingPatients = useMemo(
+    () =>
+      form.patientName
+        ? patients.filter((p) =>
+            p.name
+              ?.toLowerCase()
+              .includes(form.patientName.toLowerCase())
+          )
+        : [],
+    [form.patientName, patients]
   );
-  
+
   const handleChangeType = (value) => {
     const type = appointmentTypes.find((t) => t.value === value);
     setForm((prev) => ({
@@ -1617,9 +1625,7 @@ function AddAppointmentModal({ selectedSlot, onClose, onSave }) {
     onSave(form);
   };
 
-  const dateLabel = selectedSlot
-    ? new Date(selectedSlot.date)
-    : new Date();
+  const dateLabel = selectedSlot ? new Date(selectedSlot.date) : new Date();
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1638,6 +1644,7 @@ function AddAppointmentModal({ selectedSlot, onClose, onSave }) {
         </div>
 
         <div className="p-6 space-y-4">
+          {/* Tarih & Saat */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
               <Calendar className="w-4 h-4 text-pink-600" />
@@ -1654,7 +1661,8 @@ function AddAppointmentModal({ selectedSlot, onClose, onSave }) {
             </div>
           </div>
 
-          <div>
+          {/* Hasta Adı + Öneriler */}
+          <div className="relative">
             <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
               <User className="w-4 h-4 text-pink-600" />
               Hasta Adı Soyadı *
@@ -1663,15 +1671,17 @@ function AddAppointmentModal({ selectedSlot, onClose, onSave }) {
               type="text"
               value={form.patientName}
               onChange={(e) => {
+                const value = e.target.value;
                 setForm((prev) => ({
                   ...prev,
-                  patientName: e.target.value,
+                  patientName: value,
                 }));
-                 setShowSuggestions(e.target.value.length > 0); 
+                setShowSuggestions(value.length > 0);
               }}
               className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all"
               placeholder="Örn: Ayşe Yılmaz"
             />
+
             {showSuggestions &&
               matchingPatients &&
               matchingPatients.length > 0 && (
@@ -1681,11 +1691,11 @@ function AddAppointmentModal({ selectedSlot, onClose, onSave }) {
                       key={p.id}
                       type="button"
                       onClick={() => {
-                        setForm({
-                          ...form,
+                        setForm((prev) => ({
+                          ...prev,
                           patientName: p.name,
                           phone: p.phone || "",
-                        });
+                        }));
                         setShowSuggestions(false);
                       }}
                       className="w-full text-left px-4 py-2 hover:bg-pink-50 flex flex-col"
@@ -1698,9 +1708,9 @@ function AddAppointmentModal({ selectedSlot, onClose, onSave }) {
                   ))}
                 </div>
             )}
-
           </div>
 
+          {/* Telefon */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
               <Phone className="w-4 h-4 text-pink-600" />
@@ -1720,6 +1730,7 @@ function AddAppointmentModal({ selectedSlot, onClose, onSave }) {
             />
           </div>
 
+          {/* Tür */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
               <FileText className="w-4 h-4 text-pink-600" />
@@ -1738,6 +1749,7 @@ function AddAppointmentModal({ selectedSlot, onClose, onSave }) {
             </select>
           </div>
 
+          {/* Notlar */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
               <FileText className="w-4 h-4 text-pink-600" />
