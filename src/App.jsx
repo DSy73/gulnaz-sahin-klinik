@@ -525,7 +525,7 @@ export default function ClinicAppointmentSystem() {
 
   const handleCreateAppointment = async (form) => {
     if (!form.patientName) {
-      showToast("Hasta adı zorunlu.", "error");
+      showToast("Randevu adı zorunlu.", "error");
       return;
     }
 
@@ -1926,7 +1926,7 @@ function AddAppointmentModal({ selectedSlot, onClose, onSave, patients = [] }) {
 
           {/* Hasta Adı + Öneriler */}
           <div className="space-y-1 relative">
-            <label className="text-xs text-gray-500">Hasta Adı</label>
+            <label className="text-xs text-gray-500">Randevu Adı</label>
             <input
               type="text"
               className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400"
