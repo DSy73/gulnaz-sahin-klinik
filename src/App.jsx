@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import logoGulnaz from "./assets/GS-KD-Logo.png";
 
-
+console.log('🚀🚀🚀 APP.JSX YÜKLENDI 🚀🚀🚀');
 // --------------------------- HELPERS -----------------------------
 
 const getDateString = (value) => {
@@ -247,7 +247,7 @@ function RiskBadge({ history, patient }) {
 
 // ------------------------ MAIN COMPONENT --------------------------
 
-export default function ClinicAppointmentSystem() {
+function App() {
   const [user, setUser] = useState(null);
   const [userRole, setUserRole] = useState(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
@@ -523,78 +523,104 @@ export default function ClinicAppointmentSystem() {
     }
   };
 
-  const handleCreateAppointment = async (form) => {
-    if (!form.patientName) {
-      showToast("Randevu adı zorunlu.", "error");
-      return;
+  const handleSaveAppointment = async (form) => {
+    // 1) Validasyon: hasta randevusunda hasta adı zorunlu
+    if (form.isPatientAppointment) {
+      if (!form.patientName) {
+        showToast("Hasta adı zorunlu.", "error");
+        return;
+      }
+    } else {
+      // Hasta randevusu DEĞİLSE en azından bir başlık olsun
+      if (!form.title) {
+        showToast("Lütfen randevu için bir ad girin.", "error");
+        return;
+      }
     }
-
-    // Form now contains date, time, and duration directly from the modal
-    const appointmentDate = form.date || (selectedSlot?.date ? getDateString(selectedSlot.date) : getDateString(new Date()));
-    const appointmentTime = form.time || (selectedSlot?.time ? normalizeTime(selectedSlot.time) : "09:00");
-
-    // Check availability - isSlotAvailable expects (time, date) where date can be Date or string
+  
+    // 2) Tarih & saat
+    const appointmentDate =
+      form.date ||
+      (selectedSlot?.date
+        ? getDateString(selectedSlot.date)
+        : getDateString(new Date()));
+  
+    const appointmentTime =
+      form.time ||
+      (selectedSlot?.time ? normalizeTime(selectedSlot.time) : "09:00");
+  
+    // 3) Aynı anda başka randevu var mı?
     if (!isSlotAvailable(appointmentTime, appointmentDate)) {
       showToast("Bu tarih ve saatte zaten bir randevu var.", "error");
       return;
     }
-
+  
+    // 4) Ekranda görünecek isim:
+    //    - Hasta randevusu ise: hasta adı
+    //    - Değilse: randevu başlığı (TV programı vb.)
+    const displayName = form.isPatientAppointment
+      ? form.patientName.trim()
+      : (form.title?.trim() || null);
+  
     try {
       const appointmentData = {
-        date: appointmentDate, // Already in YYYY-MM-DD format from form
+        date: appointmentDate,                       // YYYY-MM-DD
         time: normalizeTime(appointmentTime),
-        patient_name: form.patientName.trim(),
-        phone: form.phone || null,
+        patient_name: displayName,                  // kartta görünen isim
+        phone: form.isPatientAppointment ? (form.phone || null) : null,
         type: form.type || "Kontrol",
         duration: form.duration || 60,
         notes: form.notes || null,
         completed: false,
         status: "planned",
       };
-
+  
       const { data, error } = await supabase
         .from("appointments")
         .insert([appointmentData])
         .select()
         .single();
-
+  
       if (error) {
         console.error("Supabase error details:", error);
         console.error("Appointment data being sent:", appointmentData);
         throw error;
       }
-
+  
       const insertedAppointment = data;
-
-      const trimmedName = form.patientName.trim();
-      const existingPatient = patients.find(
-        (p) => p.name.toLowerCase() === trimmedName.toLowerCase()
-      );
-
-      if (!existingPatient) {
-        const { data: newPatient, error: patientError } = await supabase
-          .from("patients")
-          .insert([
-            {
-              name: trimmedName,
-              phone: form.phone || null,
-              email: null,
-              date_of_birth: null,
-              notes: null,
-              kvkk_approved: false,
-              kvkk_approved_at: null,
-            },
-          ])
-          .select()
-          .single();
-
-        if (patientError) {
-          console.error("Hasta kaydı oluşturulurken hata:", patientError);
-        } else if (newPatient) {
-          setPatients((prev) => [...prev, newPatient]);
+  
+      // 5) Sadece HASTA RANDEVUSUNDA hasta tablosuna ekle
+      if (form.isPatientAppointment) {
+        const trimmedName = form.patientName.trim();
+        const existingPatient = patients.find(
+          (p) => p.name.toLowerCase() === trimmedName.toLowerCase()
+        );
+  
+        if (!existingPatient) {
+          const { data: newPatient, error: patientError } = await supabase
+            .from("patients")
+            .insert([
+              {
+                name: trimmedName,
+                phone: form.phone || null,
+                email: null,
+                date_of_birth: null,
+                notes: null,
+                kvkk_approved: false,
+                kvkk_approved_at: null,
+              },
+            ])
+            .select()
+            .single();
+  
+          if (patientError) {
+            console.error("Hasta kaydı oluşturulurken hata:", patientError);
+          } else if (newPatient) {
+            setPatients((prev) => [...prev, newPatient]);
+          }
         }
       }
-
+  
       setAppointments((prev) => [...prev, insertedAppointment]);
       setShowAddModal(false);
       setSelectedSlot(null);
@@ -604,7 +630,10 @@ export default function ClinicAppointmentSystem() {
       const errorMessage = error?.message || error?.details || "Bilinmeyen hata";
       showToast(`Randevu eklenemedi: ${errorMessage}`, "error");
     }
+    
   };
+  
+  
 
   // 🔹 Hasta + ilgili kayıtları sil
   const handleDeletePatient = async (patient) => {
@@ -635,7 +664,6 @@ export default function ClinicAppointmentSystem() {
           .delete()
           .eq('id', patient.id);
       } else {
-        // Her ihtimale karşı: id yoksa isme göre
         await supabase
           .from('patients')
           .delete()
@@ -685,6 +713,10 @@ export default function ClinicAppointmentSystem() {
       console.error('Randevu silinirken hata:', error);
       showToast('Randevu silinemedi!', 'error');
     }
+  }; 
+  const closeAddModal = () => {
+    setShowAddModal(false);
+    setSelectedSlot(null);
   };
   // ----------------------- PATIENT SAVE -----------------------
 
@@ -949,25 +981,17 @@ export default function ClinicAppointmentSystem() {
                 setSelectedPatient(name);
                 setShowPatientHistory(true);
               }}
-              onDeleteAppointment={handleDeleteAppointment}  // ✅ BU SATIRI EKLEYİN
+              onDeleteAppointment={handleDeleteAppointment}  
             />
           )}
 
           {view === "week" && (
             <WeekView
-              weekDates={weekDates}
-              workingHours={workingHours}
+              currentDate={currentDate}
               appointments={appointments}
               openAddModal={openAddModal}
-              getTypeColor={getTypeColor}
-              getDateString={getDateString}
-              updateAppointmentStatus={handleUpdateStatus}
-              openPatientHistory={(name) => {
-                setSelectedPatient(name);
-                setShowPatientHistory(true);
-              }}
-              onDeleteAppointment={handleDeleteAppointment}  // ✅ BU SATIRI EKLEYİN
-              STATUS_OPTIONS={STATUS_OPTIONS}
+              getTypeIcon={getTypeIcon}
+              onDeleteAppointment={handleDeleteAppointment}
             />
           )}                                
 
@@ -1114,7 +1138,7 @@ export default function ClinicAppointmentSystem() {
                 </button>
                 <button
                   onClick={handleSavePatient}
-                  disabled={!patientForm.name || patientFormLoading}
+                  disabled={patientFormLoading || !patientForm.name}
                   className="flex-1 px-4 py-2 bg-gradient-to-r from-pink-500 to-pink-600 text-white rounded-xl hover:from-pink-600 hover:to-pink-700 disabled:from-gray-300 disabled:to-gray-300 disabled:cursor-not-allowed font-medium shadow-lg"
                 >
                   {patientFormLoading ? "Kaydediliyor..." : "Kaydet"}
@@ -1125,15 +1149,12 @@ export default function ClinicAppointmentSystem() {
         )}
 
         {/* ---------------- ADD APPOINTMENT MODAL ---------------- */}
-        {showAddModal && selectedSlot && (
+        {showAddModal && (
           <AddAppointmentModal
             selectedSlot={selectedSlot}
-            onClose={() => {
-              setShowAddModal(false);
-              setSelectedSlot(null);
-            }}
-            onSave={handleCreateAppointment}
-            patients={patients}
+            onClose={closeAddModal}
+            onSave={handleSaveAppointment}
+            patients={patients}   // mevcut hasta listesi
           />
         )}
 
@@ -1150,9 +1171,7 @@ export default function ClinicAppointmentSystem() {
               setSelectedPatient(null);
             }}
             onDeletePatient={async (patient) => {
-              // önce hastayı sil
               await handleDeletePatient(patient);
-              // sonra modalı kapat
               setShowPatientHistory(false);
               setSelectedPatient(null);
             }}
@@ -1176,7 +1195,7 @@ export default function ClinicAppointmentSystem() {
       </div>
     </>
   );
-}
+  }
 
 // =========================== DAY VIEW (OUTLOOK, 1 SAAT SLOT) =========================== //
 
@@ -1391,8 +1410,6 @@ function timeStringToMinutes(t) {
   return h * 60 + m;
 }
 
-//const SLOT_HEIGHT_PX = 28; // her 30 dk için yükseklik
-
 // =========================== WEEK VIEW (OUTLOOK, 1 SAAT SLOT) =========================== //
 
 // "HH:MM" -> dakika
@@ -1401,11 +1418,13 @@ function weekViewTimeStringToMinutes(t) {
   return h * 60 + m;
 }
 
+// WeekView component'ini bulun ve şöyle güncelleyin:
+
 function WeekView({
   currentDate,
   appointments,
   openAddModal,
-  openEditModal,      // varsa kullanılır, yoksa openAddModal ile edit
+  openEditModal,
   getTypeIcon,
   onDeleteAppointment,
 }) {
@@ -1421,10 +1440,9 @@ function WeekView({
     if (!openAddModal) return;
 
     openAddModal({
-      // DayView ile aynı formatta selectedSlot
-      date: dayDate,     // Date objesi
-      time,              // "11:00"
-      duration: 60,      // varsayılan 1 saat (modalda değişir)
+      date: dayDate,
+      time,
+      duration: 60,
     });
   };
 
@@ -1436,7 +1454,15 @@ function WeekView({
     }
   };
 
-  const SLOT_HEIGHT_PX = 40; // her 1 saatlik grid yüksekliği
+  const SLOT_HEIGHT_PX = 40;
+
+   const formatDateKey = (d) => {
+    const date = d instanceof Date ? d : new Date(d);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
   return (
     <div className="bg-white rounded-2xl shadow-lg overflow-hidden flex flex-col h-full">
@@ -1483,9 +1509,15 @@ function WeekView({
         {weekDays.map((day) => {
           const dayKey = formatDateKey(day);
 
-          const dayAppointments = (appointments || []).filter(
-            (apt) => apt.date === dayKey
-          );
+          console.log('📅 WeekView Day:', dayKey); // DEBUG
+
+            const dayAppointments = (appointments || []).filter((apt) => {
+            const aptDate = formatDateKey(apt.date);
+            console.log('🔍 Comparing:', aptDate, '===', dayKey, '?', aptDate === dayKey); // DEBUG
+            return aptDate === dayKey;
+          });
+
+          console.log('📋 Day Appointments for', dayKey, ':', dayAppointments.length); // DEBUG
 
           return (
             <div
@@ -1506,12 +1538,10 @@ function WeekView({
                 const minutesFromStart =
                   weekViewTimeStringToMinutes(apt.time || "07:00") - 7 * 60;
 
-                const topPx =
-                  (minutesFromStart / 60) * SLOT_HEIGHT_PX;
+                const topPx = (minutesFromStart / 60) * SLOT_HEIGHT_PX;
 
                 const duration = apt.duration || 60;
-                const heightPx =
-                  Math.max(duration / 60, 0.5) * SLOT_HEIGHT_PX; // 30 dk ise yarım slot
+                const heightPx = Math.max(duration / 60, 0.5) * SLOT_HEIGHT_PX;
 
                 return (
                   <div
@@ -1546,7 +1576,11 @@ function WeekView({
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (window.confirm("Bu randevuyu silmek istediğinize emin misiniz?")) {
+                            if (
+                              window.confirm(
+                                "Bu randevuyu silmek istediğinize emin misiniz?"
+                              )
+                            ) {
                               onDeleteAppointment(apt.id);
                             }
                           }}
@@ -1750,10 +1784,10 @@ function PatientsView({
   );
 }
 /* ----------------------------- Patients View ----------------------------- */
-// =========================== ADD APPOINTMENT MODAL (1 SAAT DEFAULT) =========================== //
+
+// =========================== ADD APPOINTMENT MODAL =========================== //
 
 function AddAppointmentModal({ selectedSlot, onClose, onSave, patients = [] }) {
-  // 07:00–23:00 arası 30 dk'lık seçenekler (başlangıç/bitiş için)
   const buildTimeOptions = () => {
     const opts = [];
     const startMinutes = 7 * 60;
@@ -1779,7 +1813,6 @@ function AddAppointmentModal({ selectedSlot, onClose, onSave, patients = [] }) {
     return `${h}:${m}`;
   };
 
-  // Slot’tan gelen tarih & saat
   const defaultDate =
     selectedSlot?.date ? new Date(selectedSlot.date) : new Date();
 
@@ -1794,29 +1827,43 @@ function AddAppointmentModal({ selectedSlot, onClose, onSave, patients = [] }) {
     return minutesToTime(base);
   })();
 
-  const [startTime, setStartTime] = useState(defaultStartTime);
-  const [endTime, setEndTime] = useState(defaultEndTime);
+  const [startTime, setStartTime] = React.useState(defaultStartTime);
+  const [endTime, setEndTime] = React.useState(defaultEndTime);
 
-  const [form, setForm] = useState({
+  const [form, setForm] = React.useState({
+    title: selectedSlot?.title || "",
+    isPatientAppointment:
+      selectedSlot?.isPatientAppointment ?? true,
     patientName: selectedSlot?.patientName || "",
     phone: selectedSlot?.phone || "",
     type: selectedSlot?.type || "Kontrol",
     notes: selectedSlot?.notes || "",
   });
 
-  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [showSuggestions, setShowSuggestions] = React.useState(false);
+  const [matchingPatients, setMatchingPatients] = React.useState([]);
 
-  const matchingPatients = useMemo(
-    () =>
-      form.patientName
-        ? patients.filter((p) =>
-            p.name
-              ?.toLowerCase()
-              .includes(form.patientName.toLowerCase())
-          )
-        : [],
-    [form.patientName, patients]
-  );
+  React.useEffect(() => {
+    if (!form.isPatientAppointment) {
+      setMatchingPatients([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    const query = form.patientName?.trim().toLowerCase();
+    if (!query || query.length < 2 || !patients || patients.length === 0) {
+      setMatchingPatients([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    const matches = patients.filter((p) =>
+      p.name?.toLowerCase().includes(query)
+    );
+
+    setMatchingPatients(matches);
+    setShowSuggestions(matches.length > 0);
+  }, [form.patientName, form.isPatientAppointment, patients]);
 
   const handleChangeType = (value) => {
     setForm((prev) => ({
@@ -1838,7 +1885,9 @@ function AddAppointmentModal({ selectedSlot, onClose, onSave, patients = [] }) {
 
     onSave({
       ...form,
-      date: defaultDate.toISOString().slice(0, 10), // YYYY-MM-DD
+      patientName: form.isPatientAppointment ? form.patientName : null,
+      phone: form.isPatientAppointment ? form.phone : null,
+      date: defaultDate.toISOString().slice(0, 10),
       time: startTime,
       duration,
     });
@@ -1856,9 +1905,7 @@ function AddAppointmentModal({ selectedSlot, onClose, onSave, patients = [] }) {
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="px-6 py-4 border-b flex items-center justify-between bg-gradient-to-r from-pink-50 to-purple-50">
-          <h2 className="text-lg font-bold text-gray-800">
-            Yeni Randevu
-          </h2>
+          <h2 className="text-lg font-bold text-gray-800">Yeni Randevu</h2>
           <button
             onClick={onClose}
             className="text-gray-500 hover:text-gray-700 text-sm"
@@ -1869,7 +1916,7 @@ function AddAppointmentModal({ selectedSlot, onClose, onSave, patients = [] }) {
 
         {/* Body */}
         <div className="p-6 space-y-5 overflow-auto">
-          {/* Tarih + Saat Seçimi */}
+          {/* Tarih + Saat */}
           <div className="space-y-2">
             <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
               Tarih ve Saat
@@ -1878,22 +1925,17 @@ function AddAppointmentModal({ selectedSlot, onClose, onSave, patients = [] }) {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-1">
-                <label className="text-xs text-gray-500">
-                  Başlangıç Saati
-                </label>
+                <label className="text-xs text-gray-500">Başlangıç Saati</label>
                 <select
                   className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400"
                   value={startTime}
                   onChange={(e) => {
                     const newStart = e.target.value;
                     setStartTime(newStart);
-
                     const newStartMin = timeToMinutes(newStart);
                     const endMin = timeToMinutes(endTime);
                     if (endMin <= newStartMin) {
-                      setEndTime(
-                        minutesToTime(newStartMin + 60) // default fark 1 saat
-                      );
+                      setEndTime(minutesToTime(newStartMin + 60));
                     }
                   }}
                 >
@@ -1906,9 +1948,7 @@ function AddAppointmentModal({ selectedSlot, onClose, onSave, patients = [] }) {
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="text-xs text-gray-500">
-                  Bitiş Saati
-                </label>
+                <label className="text-xs text-gray-500">Bitiş Saati</label>
                 <select
                   className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400"
                   value={endTime}
@@ -1924,69 +1964,118 @@ function AddAppointmentModal({ selectedSlot, onClose, onSave, patients = [] }) {
             </div>
           </div>
 
-          {/* Hasta Adı + Öneriler */}
-          <div className="space-y-1 relative">
+          {/* Randevu Adı */}
+          <div className="space-y-1">
             <label className="text-xs text-gray-500">Randevu Adı</label>
             <input
               type="text"
               className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400"
-              value={form.patientName}
-              onChange={(e) => {
-                const value = e.target.value;
-                setForm((prev) => ({
-                  ...prev,
-                  patientName: value,
-                }));
-                setShowSuggestions(value.length > 0);
-              }}
-              placeholder="Örn: Ayşe Yılmaz"
-            />
-            {showSuggestions &&
-              matchingPatients &&
-              matchingPatients.length > 0 && (
-                <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                  {matchingPatients.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => {
-                        setForm((prev) => ({
-                          ...prev,
-                          patientName: p.name,
-                          phone: p.phone || "",
-                        }));
-                        setShowSuggestions(false);
-                      }}
-                      className="w-full text-left px-4 py-2 hover:bg-pink-50 flex flex-col"
-                    >
-                      <span className="font-medium text-gray-800">{p.name}</span>
-                      {p.phone && (
-                        <span className="text-xs text-gray-500">{p.phone}</span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-          </div>
-
-          {/* Telefon */}
-          <div className="space-y-1">
-            <label className="text-xs text-gray-500">Telefon</label>
-            <input
-              type="tel"
-              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400"
-              value={form.phone}
+              value={form.title}
               onChange={(e) =>
-                setForm((prev) => ({ ...prev, phone: e.target.value }))
+                setForm((prev) => ({ ...prev, title: e.target.value }))
               }
             />
           </div>
 
+          {/* Hasta randevusu checkbox */}
+          <div className="flex items-center gap-2 mt-2">
+            <input
+              id="isPatient"
+              type="checkbox"
+              checked={form.isPatientAppointment}
+              onChange={(e) =>
+                setForm((prev) => ({
+                  ...prev,
+                  isPatientAppointment: e.target.checked,
+                }))
+              }
+            />
+            <label
+              htmlFor="isPatient"
+              className="text-xs text-gray-600 select-none"
+            >
+              Bu bir hasta randevusu
+            </label>
+          </div>
+
+          {/* Hasta bilgileri */}
+          {form.isPatientAppointment && (
+            <>
+              <div className="space-y-1 relative">
+                <label className="text-xs text-gray-500">Hasta Adı</label>
+                <input
+                  type="text"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400"
+                  value={form.patientName || ""}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      patientName: e.target.value,
+                    }))
+                  }
+                  onFocus={() => {
+                    if (matchingPatients.length > 0) {
+                      setShowSuggestions(true);
+                    }
+                  }}
+                  onBlur={() => {
+                    setTimeout(() => setShowSuggestions(false), 150);
+                  }}
+                />
+
+                {showSuggestions &&
+                  matchingPatients &&
+                  matchingPatients.length > 0 && (
+                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                      {matchingPatients.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            setForm((prev) => ({
+                              ...prev,
+                              patientName: p.name,
+                              phone: p.phone || "",
+                            }));
+                            setShowSuggestions(false);
+                          }}
+                          className="w-full text-left px-4 py-2 hover:bg-pink-50 flex flex-col"
+                        >
+                          <span className="font-medium text-gray-800">
+                            {p.name}
+                          </span>
+                          {p.phone && (
+                            <span className="text-xs text-gray-500">
+                              {p.phone}
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs text-gray-500">Telefon</label>
+                <input
+                  type="tel"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400"
+                  value={form.phone || ""}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      phone: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+            </>
+          )}
+
           {/* Tür */}
           <div className="space-y-1">
-            <label className="text-xs text-gray-500">
-              Randevu Türü
-            </label>
+            <label className="text-xs text-gray-500">Randevu Türü</label>
             <select
               className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400"
               value={form.type}
@@ -2005,7 +2094,7 @@ function AddAppointmentModal({ selectedSlot, onClose, onSave, patients = [] }) {
             <textarea
               className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 resize-none"
               rows={3}
-              value={form.notes}
+              value={form.notes || ""}
               onChange={(e) =>
                 setForm((prev) => ({ ...prev, notes: e.target.value }))
               }
@@ -2033,9 +2122,7 @@ function AddAppointmentModal({ selectedSlot, onClose, onSave, patients = [] }) {
   );
 }
 
-// ------------------------- AddAppointment Modal --------------------------
-
-// ------------------------- PatientHistory Modal --------------------------
+/* ----------------------------- ADD APPOINTMENT MODAL ----------------------------- */
 
 function PatientHistoryModal({
   selectedPatient,
@@ -2478,3 +2565,5 @@ function PatientHistoryModal({
     </div>
   );
 }
+
+export default App;
