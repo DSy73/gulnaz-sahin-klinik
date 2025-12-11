@@ -875,65 +875,109 @@ function App() {
 
       <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50">
         {/* ---------------- HEADER ---------------- */}
-        <div className="bg-[#fff5f7] border-b shadow-sm">
-          <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between h-[120px]">
-            {/* Sol Taraf: Logo + Ünvan */}
-            <div className="flex items-center gap-3">
-              <img
-                src={logoGulnaz}
-                className="w-[105px] h-auto object-contain"
-                alt="Doç. Dr. Gülnaz Şahin"
-              />
-
-              <div className="flex flex-col leading-tight ml-2">
-                <div className="text-[22px] font-semibold text-[#b46b7a]">
-                  Doç. Dr. Gülnaz Şahin
-                </div>
-                <div className="text-xs tracking-wide text-[#c697a3] uppercase">
-                  Kadın Hastalıkları • Doğum • İnfertilite
-                </div>
-
-                <div className="flex items-center gap-2 mt-1">
-                  <div className="text-[10px] px-2 py-0.5 bg-pink-100 text-pink-700 rounded-full inline-block">
-                    {userRole === "doctor" ? "👩‍⚕️ Doktor" : "👤 Asistan"}
+         <div className="bg-[#fff5f7] border-b shadow-sm">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3">
+            {/* Mobile Layout (< 768px) */}
+            <div className="md:hidden space-y-3">
+              {/* Logo + Başlık */}
+              <div className="flex items-center gap-2">
+                <img
+                  src={logoGulnaz}
+                  className="w-16 h-auto object-contain"
+                  alt="Doç. Dr. Gülnaz Şahin"
+                />
+                <div className="flex-1">
+                  <div className="text-base font-semibold text-[#b46b7a] leading-tight">
+                    Doç. Dr. Gülnaz Şahin
                   </div>
+                  <div className="text-[9px] tracking-wide text-[#c697a3] uppercase">
+                    Kadın Hastalıkları • Doğum • İnfertilite
+                  </div>
+                </div>
+              </div>
 
-                  <button
-                    onClick={async () => {
-                      await supabase.auth.signOut();
-                      setUser(null);
-                      setUserRole(null);
-                    }}
-                    className="px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white text-xs rounded-lg shadow transition-all"
-                  >
-                    Çıkış
-                  </button>
+              {/* Rol + Çıkış */}
+              <div className="flex items-center justify-between">
+                <div className="text-[10px] px-2 py-1 bg-pink-100 text-pink-700 rounded-full">
+                  {userRole === "doctor" ? "👩‍⚕️ Doktor" : "👤 Asistan"}
+                </div>
+                <button
+                  onClick={async () => {
+                    await supabase.auth.signOut();
+                    setUser(null);
+                    setUserRole(null);
+                  }}
+                  className="px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white text-xs rounded-lg"
+                >
+                  Çıkış
+                </button>
+              </div>
+
+              {/* İstatistik Kutuları */}
+              <div className="flex gap-2">
+                <div className="flex-1 bg-gradient-to-br from-pink-500 to-pink-600 text-white px-3 py-2 rounded-lg shadow text-center">
+                  <div className="text-[9px] opacity-90">Bugün</div>
+                  <div className="text-lg font-bold">{stats.today}</div>
+                </div>
+                <div className="flex-1 bg-gradient-to-br from-purple-500 to-purple-600 text-white px-3 py-2 rounded-lg shadow text-center">
+                  <div className="text-[9px] opacity-90">Bu Hafta</div>
+                  <div className="text-lg font-bold">{stats.week}</div>
                 </div>
               </div>
             </div>
 
-            {/* Sağ Taraf: İstatistik kutuları (Tamamlanan kaldırıldı) */}
-            <div className="flex flex-col items-end justify-center h-full">
-              <div className="text-[24px] font-medium text-[#d14b84] mb-1">
-                Randevu Yönetim Sistemi
-              </div>
+            {/* Desktop Layout (>= 768px) */}
+            <div className="hidden md:flex items-center justify-between h-[120px]">
+              {/* Sol Taraf: Logo + Ünvan */}
+              <div className="flex items-center gap-3">
+                <img
+                  src={logoGulnaz}
+                  className="w-[105px] h-auto object-contain"
+                  alt="Doç. Dr. Gülnaz Şahin"
+                />
 
-              <div className="flex gap-2 mt-2 -mb-4">
-                <div className="bg-gradient-to-br from-pink-500 to-pink-600 text-white px-3 py-1.5 rounded-lg shadow text-center">
-                  <div className="text-[10px] opacity-90 leading-none">
-                    Bugün
+                <div className="flex flex-col leading-tight ml-2">
+                  <div className="text-[22px] font-semibold text-[#b46b7a]">
+                    Doç. Dr. Gülnaz Şahin
                   </div>
-                  <div className="text-xl font-bold leading-none">
-                    {stats.today}
+                  <div className="text-xs tracking-wide text-[#c697a3] uppercase">
+                    Kadın Hastalıkları • Doğum • İnfertilite
+                  </div>
+
+                  <div className="flex items-center gap-2 mt-1">
+                    <div className="text-[10px] px-2 py-0.5 bg-pink-100 text-pink-700 rounded-full inline-block">
+                      {userRole === "doctor" ? "👩‍⚕️ Doktor" : "👤 Asistan"}
+                    </div>
+
+                    <button
+                      onClick={async () => {
+                        await supabase.auth.signOut();
+                        setUser(null);
+                        setUserRole(null);
+                      }}
+                      className="px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white text-xs rounded-lg shadow transition-all"
+                    >
+                      Çıkış
+                    </button>
                   </div>
                 </div>
+              </div>
 
-                <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white px-3 py-1.5 rounded-lg shadow text-center">
-                  <div className="text-[10px] opacity-90 leading-none">
-                    Bu Hafta
+              {/* Sağ Taraf: Başlık + İstatistikler */}
+              <div className="flex flex-col items-end justify-center h-full">
+                <div className="text-[24px] font-medium text-[#d14b84] mb-1">
+                  Randevu Yönetim Sistemi
+                </div>
+
+                <div className="flex gap-2 mt-2 -mb-4">
+                  <div className="bg-gradient-to-br from-pink-500 to-pink-600 text-white px-3 py-1.5 rounded-lg shadow text-center">
+                    <div className="text-[10px] opacity-90 leading-none">Bugün</div>
+                    <div className="text-xl font-bold leading-none">{stats.today}</div>
                   </div>
-                  <div className="text-xl font-bold leading-none">
-                    {stats.week}
+
+                  <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white px-3 py-1.5 rounded-lg shadow text-center">
+                    <div className="text-[10px] opacity-90 leading-none">Bu Hafta</div>
+                    <div className="text-xl font-bold leading-none">{stats.week}</div>
                   </div>
                 </div>
               </div>
