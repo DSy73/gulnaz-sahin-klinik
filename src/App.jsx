@@ -416,11 +416,16 @@ function App() {
     } else {
       slot = { time: slotOrTime, date };
     }
-
-    if (slot.time && slot.date && !isSlotAvailable(slot.time, slot.date)) {
+  
+    // Edit modu kontrolü - eğer randevunun ID'si varsa edit modudur
+    const isEditMode = slot.id ? true : false;
+  
+    // Edit modunda değilse slot kontrolü yap
+    if (!isEditMode && slot.time && slot.date && !isSlotAvailable(slot.time, slot.date)) {
       showToast("Bu saat dolu.", "error");
       return;
     }
+    
     setSelectedSlot(slot);
     setShowAddModal(true);
   };
@@ -447,6 +452,9 @@ function App() {
   };
 
   const handleSaveAppointment = async (form) => {
+    // Edit modu kontrolü
+    const isEditMode = !!form.id;
+  
     if (form.isPatientAppointment) {
       if (!form.patientName) {
         showToast("Hasta adı zorunlu.", "error");
@@ -458,26 +466,20 @@ function App() {
         return;
       }
     }
-
-    const appointmentDate =
-      form.date ||
-      (selectedSlot?.date
-        ? getDateString(selectedSlot.date)
-        : getDateString(new Date()));
-
-    const appointmentTime =
-      form.time ||
-      (selectedSlot?.time ? normalizeTime(selectedSlot.time) : "09:00");
-
-    if (!isSlotAvailable(appointmentTime, appointmentDate)) {
+  
+    const appointmentDate = form.date || getDateString(new Date());
+    const appointmentTime = form.time || "09:00";
+  
+    // Edit modunda değilse slot kontrolü yap
+    if (!isEditMode && !isSlotAvailable(appointmentTime, appointmentDate)) {
       showToast("Bu tarih ve saatte zaten bir randevu var.", "error");
       return;
     }
-
+  
     const displayName = form.isPatientAppointment
       ? form.patientName.trim()
-      : (form.title?.trim() || null);
-
+       : null; 
+  
     try {
       const appointmentData = {
         date: appointmentDate,
@@ -490,89 +492,103 @@ function App() {
         completed: false,
         status: "planned",
       };
-
-      const { data, error } = await supabase
-        .from("appointments")
-        .insert([appointmentData])
-        .select()
-        .single();
-
-      if (error) {
-        console.error("Supabase error details:", error);
-        console.error("Appointment data being sent:", appointmentData);
-        throw error;
-      }
-
-      const insertedAppointment = data;
-
-      if (form.isPatientAppointment) {
-        const trimmedName = form.patientName.trim();
-        const existingPatient = patients.find(
-          (p) => p.name.toLowerCase() === trimmedName.toLowerCase()
+  
+      if (isEditMode) {
+        // GÜNCELLEME
+        const { data, error } = await supabase
+          .from("appointments")
+          .update(appointmentData)
+          .eq("id", form.id)
+          .select()
+          .single();
+  
+        if (error) throw error;
+  
+        setAppointments((prev) =>
+          prev.map((apt) => (apt.id === form.id ? data : apt))
         );
-
-        if (!existingPatient) {
-          const { data: newPatient, error: patientError } = await supabase
-            .from("patients")
-            .insert([
-              {
-                name: trimmedName,
-                phone: form.phone || null,
-                email: null,
-                date_of_birth: null,
-                notes: null,
-                kvkk_approved: false,
-                kvkk_approved_at: null,
-              },
-            ])
-            .select()
-            .single();
-
-          if (patientError) {
-            console.error("Hasta kaydı oluşturulurken hata:", patientError);
-          } else if (newPatient) {
-            setPatients((prev) => [...prev, newPatient]);
+        showToast("Randevu güncellendi.");
+      } else {
+        // YENİ EKLEME
+        const { data, error } = await supabase
+          .from("appointments")
+          .insert([appointmentData])
+          .select()
+          .single();
+  
+        if (error) throw error;
+  
+        const insertedAppointment = data;
+  
+        if (form.isPatientAppointment) {
+          const trimmedName = form.patientName.trim();
+          const existingPatient = patients.find(
+            (p) => p.name.toLowerCase() === trimmedName.toLowerCase()
+          );
+  
+          if (!existingPatient) {
+            const { data: newPatient, error: patientError } = await supabase
+              .from("patients")
+              .insert([
+                {
+                  name: trimmedName,
+                  phone: form.phone || null,
+                  email: null,
+                  date_of_birth: null,
+                  notes: null,
+                  kvkk_approved: false,
+                  kvkk_approved_at: null,
+                },
+              ])
+              .select()
+              .single();
+  
+            if (patientError) {
+              console.error("Hasta kaydı oluşturulurken hata:", patientError);
+            } else if (newPatient) {
+              setPatients((prev) => [...prev, newPatient]);
+            }
+          }
+  
+          if (form.notes && form.notes.trim()) {
+            try {
+              const { data: existingProfile } = await supabase
+                .from("patient_profiles")
+                .select("timeline_notes")
+                .eq("patient_name", trimmedName)
+                .maybeSingle();
+  
+              const currentNotes = existingProfile?.timeline_notes || [];
+              const newNoteEntry = {
+                id: Date.now(),
+                date: new Date().toISOString(),
+                note: `${form.type} randevusu: ${form.notes.trim()}`,
+              };
+  
+              const updatedNotes = [newNoteEntry, ...currentNotes];
+  
+              await supabase
+                .from("patient_profiles")
+                .upsert(
+                  { patient_name: trimmedName, timeline_notes: updatedNotes },
+                  { onConflict: "patient_name" }
+                );
+            } catch (noteError) {
+              console.error("Tarihli not eklenirken hata:", noteError);
+            }
           }
         }
-
-        if (form.notes && form.notes.trim()) {
-          try {
-            const { data: existingProfile } = await supabase
-              .from("patient_profiles")
-              .select("timeline_notes")
-              .eq("patient_name", trimmedName)
-              .maybeSingle();
-
-            const currentNotes = existingProfile?.timeline_notes || [];
-
-            const newNoteEntry = {
-              id: Date.now(),
-              date: new Date().toISOString(),
-              note: `${form.type} randevusu: ${form.notes.trim()}`,
-            };
-
-            const updatedNotes = [newNoteEntry, ...currentNotes];
-
-            await supabase
-              .from("patient_profiles")
-              .upsert(
-                { patient_name: trimmedName, timeline_notes: updatedNotes },
-                { onConflict: "patient_name" }
-              );
-          } catch (noteError) {
-            console.error("Tarihli not eklenirken hata:", noteError);
-          }
-        }
+  
+        setAppointments((prev) => [...prev, insertedAppointment]);
+        showToast("Randevu başarıyla kaydedildi.");
       }
-
-      setAppointments((prev) => [...prev, insertedAppointment]);
+  
       setShowAddModal(false);
       setSelectedSlot(null);
-      showToast("Randevu başarıyla kaydedildi.");
     } catch (error) {
-      console.error("Randevu eklenirken hata:", error);
+      console.error("Randevu işlenirken hata:", error);
       const errorMessage = error?.message || error?.details || "Bilinmeyen hata";
-      showToast(`Randevu eklenemedi: ${errorMessage}`, "error");
+      showToast(`İşlem başarısız: ${errorMessage}`, "error");
     }
   };
 
@@ -805,40 +821,40 @@ function App() {
             <div className="flex gap-2 flex-wrap items-center justify-between">
               {/* Sol taraf - View butonları */}
               <div className="flex gap-2">
-                <button
-                  onClick={() => setView("day")}
-                  className={`flex-1 sm:flex-initial sm:px-5 py-2 sm:py-2.5 rounded-xl font-medium transition-all text-xs sm:text-base ${
-                    view === "day"
-                      ? "bg-gradient-to-r from-pink-500 to-pink-600 text-white shadow-lg"
-                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                  }`}
-                >
-                  <Calendar className="w-4 h-4 inline mr-1 sm:mr-2" />
-                  Günlük
-                </button>
-                <button
-                  onClick={() => setView("week")}
-                  className={`flex-1 sm:flex-initial sm:px-5 py-2 sm:py-2.5 rounded-xl font-medium transition-all text-xs sm:text-base ${
-                    view === "week"
-                      ? "bg-gradient-to-r from-pink-500 to-pink-600 text-white shadow-lg"
-                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                  }`}
-                >
-                  <Calendar className="w-4 h-4 inline mr-1 sm:mr-2" />
-                  Haftalık
-                </button>
-                <button
-                  onClick={() => setView("patients")}
-                  className={`flex-1 sm:flex-initial sm:px-5 py-2 sm:py-2.5 rounded-xl font-medium transition-all text-xs sm:text-base ${
-                    view === "patients"
-                      ? "bg-gradient-to-r from-pink-500 to-pink-600 text-white shadow-lg"
-                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                  }`}
-                >
-                  <Users className="w-4 h-4 inline mr-1 sm:mr-2" />
-                  Hastalar
-                </button>
-              </div>
+              <button
+                onClick={() => setView("day")}
+                className={`flex-1 sm:flex-initial sm:px-5 py-2 sm:py-2.5 rounded-xl font-medium transition-all text-xs sm:text-base flex flex-col sm:flex-row items-center gap-1 sm:gap-2 ${
+                  view === "day"
+                    ? "bg-gradient-to-r from-pink-500 to-pink-600 text-white shadow-lg"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                <Calendar className="w-4 h-4" />
+                <span>Günlük</span>
+              </button>
+              <button
+                onClick={() => setView("week")}
+                className={`flex-1 sm:flex-initial sm:px-5 py-2 sm:py-2.5 rounded-xl font-medium transition-all text-xs sm:text-base flex flex-col sm:flex-row items-center gap-1 sm:gap-2 ${
+                  view === "week"
+                    ? "bg-gradient-to-r from-pink-500 to-pink-600 text-white shadow-lg"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                <Calendar className="w-4 h-4" />
+                <span>Haftalık</span>
+              </button>
+              <button
+                onClick={() => setView("patients")}
+                className={`flex-1 sm:flex-initial sm:px-5 py-2 sm:py-2.5 rounded-xl font-medium transition-all text-xs sm:text-base flex flex-col sm:flex-row items-center gap-1 sm:gap-2 ${
+                  view === "patients"
+                    ? "bg-gradient-to-r from-pink-500 to-pink-600 text-white shadow-lg"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                <Users className="w-4 h-4" />
+                <span>Hastalar</span>
+              </button>
+            </div>
 
               {/* Sağ taraf - Yeni Randevu butonu */}
               <button
@@ -877,7 +893,8 @@ function App() {
                   </button>
                 </div>
 
-                <div className="flex items-center justify-between gap-2">
+                {/* Tarih Navigasyonu - Oklar tarihin yanında */}
+                <div className="flex items-center justify-center gap-2">
                   <button
                     onClick={() => changeDate(view === "day" ? -1 : -7)}
                     className="p-2 hover:bg-white/50 rounded-xl transition-all flex-shrink-0"
@@ -885,8 +902,8 @@ function App() {
                     <ChevronLeft className="w-5 h-5 text-gray-700" />
                   </button>
 
-                  <div className="text-center flex-1 min-w-0">
-                    <div className="font-semibold text-gray-700 text-xs sm:text-sm truncate">
+                  <div className="text-center px-4">
+                    <div className="font-semibold text-gray-700 text-xs sm:text-sm whitespace-nowrap">
                       {view === "day"
                         ? formatDate(currentDate)
                         : (() => {
@@ -1202,7 +1219,9 @@ function DayView({
             return (
               <div
                 key={apt.id}
-                className="absolute left-1 right-1 sm:left-1.5 sm:right-1.5 rounded-md bg-green-300/90 hover:bg-green-400 text-[10px] sm:text-xs text-gray-800 shadow-md px-1.5 py-1 cursor-pointer overflow-hidden flex flex-col"
+                className={`absolute left-1 right-1 sm:left-1.5 sm:right-1.5 rounded-md ${
+                  apt.patient_name ? 'bg-green-300/90 hover:bg-green-400' : 'bg-blue-300/90 hover:bg-blue-400'
+                } text-[10px] sm:text-xs text-gray-800 shadow-md px-1.5 py-1 cursor-pointer overflow-hidden flex flex-col`}
                 style={{ top: topPx, height: heightPx }}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1372,7 +1391,9 @@ function WeekView({
                 return (
                   <div
                     key={apt.id}
-                    className="absolute left-0.5 right-0.5 rounded bg-green-300/90 hover:bg-green-400 text-[9px] sm:text-[10px] text-gray-800 shadow-sm px-1 py-0.5 cursor-pointer overflow-hidden"
+                    className={`absolute left-0.5 right-0.5 rounded ${
+                      apt.patient_name ? 'bg-green-300/90 hover:bg-green-400' : 'bg-blue-300/90 hover:bg-blue-400'
+                    } text-[9px] sm:text-[10px] text-gray-800 shadow-sm px-1 py-0.5 cursor-pointer overflow-hidden`}
                     style={{ top: topPx, height: heightPx }}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -1569,6 +1590,7 @@ function PatientsView({
 // =========================== ADD APPOINTMENT MODAL ===========================
 
 function AddAppointmentModal({ selectedSlot, onClose, onSave, patients = [] }) {
+  const isEditMode = selectedSlot?.id ? true : false;
   const buildTimeOptions = () => {
     const opts = [];
     const startMinutes = 7 * 60;
@@ -1613,8 +1635,8 @@ function AddAppointmentModal({ selectedSlot, onClose, onSave, patients = [] }) {
 
   const [form, setForm] = React.useState({
     title: selectedSlot?.title || "",
-    isPatientAppointment: selectedSlot?.isPatientAppointment ?? true,
-    patientName: selectedSlot?.patientName || "",
+    isPatientAppointment: selectedSlot?.patient_name ? true : (selectedSlot?.isPatientAppointment ?? true),
+    patientName: selectedSlot?.patient_name || selectedSlot?.patientName || "",
     phone: selectedSlot?.phone || "",
     type: selectedSlot?.type || "Kontrol",
     notes: selectedSlot?.notes || "",
@@ -1647,25 +1669,26 @@ function AddAppointmentModal({ selectedSlot, onClose, onSave, patients = [] }) {
   };
 
   const handleSubmit = () => {
-    const startMin = timeToMinutes(startTime);
-    const endMin = timeToMinutes(endTime);
+  const startMin = timeToMinutes(startTime);
+  const endMin = timeToMinutes(endTime);
 
-    if (endMin <= startMin) {
-      alert("Bitiş saati, başlangıç saatinden büyük olmalı.");
-      return;
-    }
+  if (endMin <= startMin) {
+    alert("Bitiş saati, başlangıç saatinden büyük olmalı.");
+    return;
+  }
 
-    const duration = endMin - startMin;
+  const duration = endMin - startMin;
 
-    onSave({
-      ...form,
-      patientName: form.isPatientAppointment ? form.patientName : null,
-      phone: form.isPatientAppointment ? form.phone : null,
-      date: selectedDate.toISOString().slice(0, 10),
-      time: startTime,
-      duration,
-    });
-  };
+  onSave({
+    ...form,
+    id: selectedSlot?.id, // Edit modunda ID'yi gönder
+    patientName: form.isPatientAppointment ? form.patientName : null,
+    phone: form.isPatientAppointment ? form.phone : null,
+    date: selectedDate.toISOString().slice(0, 10),
+    time: startTime,
+    duration,
+  });
+};
 
   const dateLabel = defaultDate.toLocaleDateString("tr-TR", {
     weekday: "long",
@@ -1679,194 +1702,205 @@ function AddAppointmentModal({ selectedSlot, onClose, onSave, patients = [] }) {
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="px-6 py-4 border-b flex items-center justify-between bg-gradient-to-r from-pink-50 to-purple-50">
-          <h2 className="text-lg font-bold text-gray-800">Yeni Randevu</h2>
+          <h2 className="text-lg font-bold text-gray-800">
+            {isEditMode ? "Randevu Düzenle" : "Yeni Randevu"}
+          </h2>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-sm">
             Kapat
           </button>
         </div>
 
         {/* Body */}
-        <div className="p-6 space-y-5 overflow-auto">
-          <div className="space-y-2">
-            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              Tarih ve Saat
-            </div>
-            {/* Tarih Seçimi */}
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">Tarih</label>
-              <input
-                type="date"
-                value={selectedDate.toISOString().slice(0, 10)}
-                onChange={(e) => {
-                  const newDate = new Date(e.target.value);
-                  setSelectedDate(newDate);
-                }}
-                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400"
-              />
-            </div>
-            <div className="text-sm text-gray-700 mb-2">{dateLabel}</div>
+          <div className="p-6 space-y-5 overflow-auto">
+            {/* Tarih + Saat */}
+            <div className="space-y-2">
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                Tarih ve Saat
+              </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-gray-500">Başlangıç Saati</label>
-                <select
-                  className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400"
-                  value={startTime}
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Tarih</label>
+                <input
+                  type="date"
+                  value={selectedDate.toISOString().slice(0, 10)}
                   onChange={(e) => {
-                    const newStart = e.target.value;
-                    setStartTime(newStart);
-                    const newStartMin = timeToMinutes(newStart);
-                    const endMin = timeToMinutes(endTime);
-                    if (endMin <= newStartMin) {
-                      setEndTime(minutesToTime(newStartMin + 60));
-                    }
+                    const newDate = new Date(e.target.value);
+                    setSelectedDate(newDate);
                   }}
-                >
-                  {timeOptions.map((t) => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400"
+                />
               </div>
 
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-gray-500">Bitiş Saati</label>
-                <select
-                  className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400"
-                  value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
-                >
-                  {timeOptions.map((t) => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-gray-500">Başlangıç Saati</label>
+                  <select
+                    className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400"
+                    value={startTime}
+                    onChange={(e) => {
+                      const newStart = e.target.value;
+                      setStartTime(newStart);
+                      const newStartMin = timeToMinutes(newStart);
+                      const endMin = timeToMinutes(endTime);
+                      if (endMin <= newStartMin) {
+                        setEndTime(minutesToTime(newStartMin + 60));
+                      }
+                    }}
+                  >
+                    {timeOptions.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-gray-500">Bitiş Saati</label>
+                  <select
+                    className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400"
+                    value={endTime}
+                    onChange={(e) => setEndTime(e.target.value)}
+                  >
+                    {timeOptions.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="space-y-1">
-            <label className="text-xs text-gray-500">Randevu Adı</label>
-            <input
-              type="text"
-              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400"
-              value={form.title}
-              onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
-            />
-          </div>
+            {/* Hasta randevusu checkbox - ÖNE ALINDI */}
+            <div className="flex items-center gap-2 pt-2 border-t">
+              <input
+                id="isPatient"
+                type="checkbox"
+                checked={form.isPatientAppointment}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, isPatientAppointment: e.target.checked }))
+                }
+                className="w-4 h-4"
+              />
+              <label htmlFor="isPatient" className="text-sm text-gray-700 font-medium select-none cursor-pointer">
+                Bu bir hasta randevusu
+              </label>
+            </div>
 
-          <div className="flex items-center gap-2 mt-2">
-            <input
-              id="isPatient"
-              type="checkbox"
-              checked={form.isPatientAppointment}
-              onChange={(e) =>
-                setForm((prev) => ({ ...prev, isPatientAppointment: e.target.checked }))
-              }
-            />
-            <label htmlFor="isPatient" className="text-xs text-gray-600 select-none">
-              Bu bir hasta randevusu
-            </label>
-          </div>
+            {/* Hasta randevusu İSE */}
+            {form.isPatientAppointment ? (
+              <>
+                <div className="space-y-1 relative">
+                  <label className="text-xs text-gray-500">Hasta Adı *</label>
+                  <input
+                    type="text"
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400"
+                    value={form.patientName || ""}
+                    onChange={(e) =>
+                      setForm((prev) => ({ ...prev, patientName: e.target.value }))
+                    }
+                    onFocus={() => {
+                      if (!isEditMode && matchingPatients.length > 0) {
+                        setShowSuggestions(true);
+                      }
+                    }}
+                    onBlur={() => {
+                      setTimeout(() => setShowSuggestions(false), 150);
+                    }}
+                    placeholder="Hasta adını girin"
+                  />
 
-          {form.isPatientAppointment && (
-            <>
-              <div className="space-y-1 relative">
-                <label className="text-xs text-gray-500">Hasta Adı</label>
+                  {!isEditMode && showSuggestions && matchingPatients && matchingPatients.length > 0 && (
+                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                      {matchingPatients.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            setForm((prev) => ({
+                              ...prev,
+                              patientName: p.name,
+                              phone: p.phone || "",
+                            }));
+                            setShowSuggestions(false);
+                          }}
+                          className="w-full text-left px-4 py-2 hover:bg-pink-50 flex flex-col"
+                        >
+                          <span className="font-medium text-gray-800">{p.name}</span>
+                          {p.phone && <span className="text-xs text-gray-500">{p.phone}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs text-gray-500">Telefon</label>
+                  <input
+                    type="tel"
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400"
+                    value={formatPhone(form.phone || "")}
+                    onChange={(e) =>
+                      setForm((prev) => ({ ...prev, phone: formatPhone(e.target.value) }))
+                    }
+                    placeholder="+90 5xx xxx xx xx"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs text-gray-500">Randevu Türü</label>
+                  <select
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400"
+                    value={form.type}
+                    onChange={(e) => handleChangeType(e.target.value)}
+                  >
+                    <option value="Kontrol">Kontrol</option>
+                    <option value="İlk Muayene">İlk Muayene</option>
+                    <option value="USG">USG</option>
+                    <option value="Prosedür">Prosedür</option>
+                  </select>
+                </div>
+              </>
+            ) : (
+              /* Hasta randevusu DEĞİLSE - sadece Randevu Adı */
+              <div className="space-y-1">
+                <label className="text-xs text-gray-500">Randevu Adı *</label>
                 <input
                   type="text"
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400"
-                  value={form.patientName || ""}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, patientName: e.target.value }))
-                  }
-                  onFocus={() => {
-                    if (matchingPatients.length > 0) {
-                      setShowSuggestions(true);
-                    }
-                  }}
-                  onBlur={() => {
-                    setTimeout(() => setShowSuggestions(false), 150);
-                  }}
-                />
-
-                {showSuggestions && matchingPatients && matchingPatients.length > 0 && (
-                  <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                    {matchingPatients.map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => {
-                          setForm((prev) => ({
-                            ...prev,
-                            patientName: p.name,
-                            phone: p.phone || "",
-                          }));
-                          setShowSuggestions(false);
-                        }}
-                        className="w-full text-left px-4 py-2 hover:bg-pink-50 flex flex-col"
-                      >
-                        <span className="font-medium text-gray-800">{p.name}</span>
-                        {p.phone && <span className="text-xs text-gray-500">{p.phone}</span>}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs text-gray-500">Telefon</label>
-                <input
-                  type="tel"
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400"
-                  value={formatPhone(form.phone || "")}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, phone: formatPhone(e.target.value) }))
-                  }
+                  value={form.title}
+                  onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
+                  placeholder="Örn: TV Programı, Konferans, Toplantı"
                 />
               </div>
-            </>
-          )}
+            )}
 
-          <div className="space-y-1">
-            <label className="text-xs text-gray-500">Randevu Türü</label>
-            <select
-              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400"
-              value={form.type}
-              onChange={(e) => handleChangeType(e.target.value)}
-            >
-              <option value="Kontrol">Kontrol</option>
-              <option value="İlk Muayene">İlk Muayene</option>
-              <option value="USG">USG</option>
-              <option value="Prosedür">Prosedür</option>
-            </select>
+            {/* Notlar - Her durumda göster */}
+            <div className="space-y-1">
+              <label className="text-xs text-gray-500">Notlar</label>
+              <textarea
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 resize-none"
+                rows={3}
+                value={form.notes || ""}
+                onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
+                placeholder="İlave notlar..."
+              />
+            </div>
           </div>
-
-          <div className="space-y-1">
-            <label className="text-xs text-gray-500">Notlar</label>
-            <textarea
-              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 resize-none"
-              rows={3}
-              value={form.notes || ""}
-              onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
-            />
-          </div>
-        </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t flex justify-end gap-3 bg-gray-50">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
-          >
-            İptal
-          </button>
-          <button
-            onClick={handleSubmit}
-            className="px-4 py-2 text-sm rounded-lg bg-pink-500 text-white hover:bg-pink-600"
-          >
-            Randevuyu Kaydet
-          </button>
-        </div>
+          <div className="px-6 py-4 border-t flex justify-end gap-3 bg-gray-50">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
+            >
+              İptal
+            </button>
+            <button
+              onClick={handleSubmit}
+              className="px-4 py-2 text-sm rounded-lg bg-pink-500 text-white hover:bg-pink-600"
+            >
+              {isEditMode ? "Güncelle" : "Randevuyu Kaydet"}
+            </button>
+          </div>
       </div>
     </div>
   );
