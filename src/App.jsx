@@ -478,7 +478,7 @@ function App() {
   
     const displayName = form.isPatientAppointment
       ? form.patientName.trim()
-       : null; 
+      : (form.title?.trim() || "Randevu"); 
   
     try {
       const appointmentData = {
@@ -491,6 +491,7 @@ function App() {
         notes: form.notes || null,
         completed: false,
         status: "planned",
+        is_patient_appointment: form.isPatientAppointment,
       };
   
       if (isEditMode) {
@@ -1220,7 +1221,9 @@ function DayView({
               <div
                 key={apt.id}
                 className={`absolute left-1 right-1 sm:left-1.5 sm:right-1.5 rounded-md ${
-                  apt.patient_name ? 'bg-green-300/90 hover:bg-green-400' : 'bg-blue-300/90 hover:bg-blue-400'
+                  apt.is_patient_appointment
+                    ? 'bg-blue-200/90 hover:bg-blue-300 border-l-4 border-blue-500' 
+                    : 'bg-purple-200/90 hover:bg-purple-300 border-l-4 border-purple-500'
                 } text-[10px] sm:text-xs text-gray-800 shadow-md px-1.5 py-1 cursor-pointer overflow-hidden flex flex-col`}
                 style={{ top: topPx, height: heightPx }}
                 onClick={(e) => {
@@ -1231,17 +1234,22 @@ function DayView({
                 <div className="flex items-start justify-between gap-1 flex-1">
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold truncate flex items-center gap-1">
-                      {getTypeIcon && <span className="shrink-0">{getTypeIcon(apt.type)}</span>}
+                      {/* Icon - Hasta randevusuysa steteskop, değilse takvim */}
+                      <span className="shrink-0">
+                        {apt.is_patient_appointment ? '🩺' : '📅'}
+                      </span>
                       <span className="truncate">{apt.patient_name || apt.patientName || "Randevu"}</span>
                     </div>
                     <div className="text-[9px] sm:text-[10px] text-gray-700 truncate">
-                      {apt.time} • {apt.type}
+                      {/* Sadece hasta randevusunda type göster */}
+                      {apt.time} {apt.is_patient_appointment && `• ${apt.type}`}
                     </div>
                   </div>
                   {onDeleteAppointment && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
+                        e.preventDefault(); // ← EKLE
                         if (window.confirm("Bu randevuyu silmek istediğinize emin misiniz?")) {
                           onDeleteAppointment(apt.id);
                         }
@@ -1392,7 +1400,9 @@ function WeekView({
                   <div
                     key={apt.id}
                     className={`absolute left-0.5 right-0.5 rounded ${
-                      apt.patient_name ? 'bg-green-300/90 hover:bg-green-400' : 'bg-blue-300/90 hover:bg-blue-400'
+                      apt.is_patient_appointment
+                        ? 'bg-blue-200/90 hover:bg-blue-300 border-l-2 border-blue-500' 
+                        : 'bg-purple-200/90 hover:bg-purple-300 border-l-2 border-purple-500'
                     } text-[9px] sm:text-[10px] text-gray-800 shadow-sm px-1 py-0.5 cursor-pointer overflow-hidden`}
                     style={{ top: topPx, height: heightPx }}
                     onClick={(e) => {
@@ -1402,17 +1412,23 @@ function WeekView({
                   >
                     <div className="flex items-start justify-between gap-0.5 h-full">
                       <div className="flex-1 min-w-0">
-                        <div className="font-semibold truncate text-[9px] leading-tight">
-                          {apt.patient_name || apt.patientName || "Randevu"}
+                        <div className="font-semibold truncate flex items-center gap-1 text-[9px] leading-tight">
+                          {/* Icon - Hasta randevusuysa steteskop, değilse takvim */}
+                          <span className="shrink-0">
+                            {apt.is_patient_appointment ? '🩺' : '📅'}
+                          </span>
+                          <span className="truncate">{apt.patient_name || apt.patientName || "Randevu"}</span>
                         </div>
                         <div className="text-[8px] text-gray-700 truncate">
-                          {apt.time}
+                          {/* Sadece hasta randevusunda type göster */}
+                          {apt.time} {apt.is_patient_appointment && apt.type}
                         </div>
                       </div>
                       {onDeleteAppointment && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
+                            e.preventDefault(); // ← EKLE
                             if (window.confirm("Bu randevuyu silmek istediğinize emin misiniz?")) {
                               onDeleteAppointment(apt.id);
                             }
@@ -1492,6 +1508,7 @@ function PatientsView({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
+                        e.preventDefault(); // ← EKLE
                         onDeletePatient(patient);
                       }}
                       className="px-3 py-1 text-xs bg-red-100 text-red-700 rounded-lg hover:bg-red-200"
@@ -1634,8 +1651,10 @@ function AddAppointmentModal({ selectedSlot, onClose, onSave, patients = [] }) {
   const [endTime, setEndTime] = React.useState(defaultEndTime);
 
   const [form, setForm] = React.useState({
-    title: selectedSlot?.title || "",
-    isPatientAppointment: selectedSlot?.patient_name ? true : (selectedSlot?.isPatientAppointment ?? true),
+    title: selectedSlot?.patient_name || selectedSlot?.title || "", // Edit modunda patient_name'i title'a yükle
+    isPatientAppointment: selectedSlot?.is_patient_appointment !== undefined 
+      ? selectedSlot.is_patient_appointment 
+      : true, // Database'den gelen değeri kullan, yoksa default true
     patientName: selectedSlot?.patient_name || selectedSlot?.patientName || "",
     phone: selectedSlot?.phone || "",
     type: selectedSlot?.type || "Kontrol",
