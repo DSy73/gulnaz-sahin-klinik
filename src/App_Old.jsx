@@ -12,8 +12,6 @@ import {
   Save,
   ChevronLeft,
   ChevronRight,
-  ChevronDown, 
-  ChevronUp,
   History,
   FileText,
   Phone,
@@ -58,7 +56,7 @@ const getWeekDates = (baseDate) => {
 };
 
 const formatPhone = (value) => {
-  if (!value) return "+90 ";
+  if (!value) return ""; // "+90 " yerine boş string döndür
   let digits = value.replace(/\D/g, "");
   if (!digits.startsWith("90")) {
     digits = "90" + digits;
@@ -433,18 +431,7 @@ function App() {
   };
 
   const handleUpdateStatus = async (id, status) => {
-    // Guard: 'Tamamlandı' yalnızca randevu saati ve sonrasında yapılabilsin
-    if (status === "completed") {
-      const apt = (appointments || []).find((a) => a.id === id);
-      if (apt) {
-        const aptTs = new Date(`${apt.date}T${apt.time || "00:00"}`).getTime();
-        if (Number.isFinite(aptTs) && aptTs > Date.now()) {
-          showToast("Randevu saati gelmeden 'Tamamlandı' yapılamaz.", "error");
-          return;
-        }
-      }
-    }
-try {
+    try {
       const { error } = await supabase
         .from("appointments")
         .update({ status, completed: status === "completed" })
@@ -868,7 +855,6 @@ try {
                 <Users className="w-4 h-4" />
                 <span>Hastalar</span>
               </button>
-             
               <button
                 onClick={() => setView("all")}
                 className={`flex-1 sm:flex-initial sm:px-5 py-2 sm:py-2.5 rounded-xl font-medium transition-all text-xs sm:text-base flex flex-col sm:flex-row items-center gap-1 sm:gap-2 ${
@@ -880,7 +866,9 @@ try {
                 <FileText className="w-4 h-4" />
                 <span>Tüm Randevular</span>
               </button>
-              </div>
+
+            </div>
+
               {/* Sağ taraf - Yeni Randevu butonu */}
               <button
                 onClick={() => {
@@ -995,14 +983,21 @@ try {
 
                 {view === "week" && (
                   <WeekView
-                    currentDate={currentDate}
+                    workingHours={workingHours}
                     appointments={appointments}
+                    currentDate={currentDate}
+                    setCurrentDate={setCurrentDate}
                     openAddModal={openAddModal}
                     getTypeIcon={getTypeIcon}
+                    handleUpdateStatus={handleUpdateStatus}
+                    openPatientHistory={(name) => {
+                      setSelectedPatient(name);
+                      setShowPatientHistory(true);
+                    }}
                     onDeleteAppointment={handleDeleteAppointment}
                   />
                 )}
-              </div>
+               </div>
             </div>
           )}
 
@@ -1017,22 +1012,25 @@ try {
               }}
               onAddPatient={() => setShowPatientForm(true)}
               onDeletePatient={handleDeletePatient}
-            />
-          )}
-        
-          {view === "all" && (
-            <AllAppointmentsView
-              appointments={appointments}
-              patients={patients}
-              openPatientHistory={(name) => {
-                setSelectedPatient(name);
-                setShowPatientHistory(true);
+              onEditPatient={(p) => {
+                // optional: if you have edit modal, wire here; otherwise keep for future
+                setPatientForm((prev) => ({ ...prev, ...(p || {}) }));
+                setShowPatientForm(true);
               }}
-              onUpdateStatus={handleUpdateStatus}
-              onDeleteAppointment={handleDeleteAppointment}
             />
           )}
-      </div>
+        </div>
+        {view === "all" && (
+          <AllAppointmentsView
+            appointments={appointments}
+            onEditAppointment={(apt) => {
+              setSelectedSlot(apt);
+              setShowAddModal(true);
+            }}
+            onDeleteAppointment={handleDeleteAppointment}
+            getTypeIcon={getTypeIcon}
+          />
+        )}
         {/* MODALS */}
         {showPatientForm && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1199,13 +1197,12 @@ function DayView({
 }) {
   const date = currentDate ? new Date(currentDate) : new Date();
   const dateKey = date.toISOString().slice(0, 10);
+  const dayAppointments = (appointments || []).filter((apt) => apt.date === dateKey);
 
-  const timeSlots = [];
+  const timeSlots = []; 
   for (let h = 7; h < 23; h++) {
     timeSlots.push(`${String(h).padStart(2, "0")}:00`);
   }
-
-  const dayAppointments = (appointments || []).filter((apt) => apt.date === dateKey);
 
   const handleEmptyClick = (time) => {
     if (!openAddModal) return;
@@ -1408,7 +1405,7 @@ function WeekView({
 
         {weekDays.map((day) => {
           const dayKey = formatDateKey(day);
-          const dayApts = (appointments || []).filter((apt) => {
+          const dayAppointments = (appointments || []).filter((apt) => {
             const aptDate = formatDateKey(apt.date);
             return aptDate === dayKey;
           });
@@ -1426,7 +1423,7 @@ function WeekView({
                 />
               ))}
 
-              {dayApts.map((apt) => {
+              {dayAppointments.map((apt) => {
                 const minutesFromStart = weekViewTimeStringToMinutes(apt.time || "07:00") - 7 * 60;
                 const topPx = (minutesFromStart / 60) * SLOT_HEIGHT_PX;
                 const duration = apt.duration || 60;
@@ -1489,148 +1486,101 @@ function WeekView({
 // =========================== PATIENTS VIEW ===========================
 
 function PatientsView({
-  patients,
-  appointments,
-  getPatientHistory,
+  patients = [],
   openPatientHistory,
-  onAddPatient,
+  openAddPatient,
   onDeletePatient,
+  onEditPatient,
 }) {
   return (
-    <div className="bg-white rounded-2xl shadow-lg">
-      {/* HEADER */}
+    <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
       <div className="p-6 border-t-2 border-t-gray-200 border-b bg-gradient-to-r from-pink-50 to-purple-50">
-        <div className="flex justify-between items-center">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
               <Users className="w-5 h-5 text-pink-600" />
-              Tüm Hastalar
+              Hastalar
             </h3>
-            <div className="mt-1 space-y-2">
-              <p className="text-sm text-gray-600">Toplam {patients.length} hasta</p>
-              {patients.length > 0 && (
-                <div className="mt-2">
-                  <RiskBadge history={appointments} />
-                </div>
-              )}
-            </div>
+            <p className="text-sm text-gray-600 mt-1">Hasta listesi ve özet bilgiler</p>
           </div>
-          <button
-            onClick={onAddPatient}
-            className="px-4 py-2 bg-pink-500 text-white rounded-xl text-sm font-medium hover:bg-pink-600 flex items-center gap-2 shadow"
-          >
-            <Plus className="w-4 h-4" />
-            Yeni Hasta
-          </button>
+
+          <div className="flex items-center gap-2">
+            {openAddPatient && (
+              <button
+                type="button"
+                onClick={openAddPatient}
+                className="px-4 py-2 rounded-xl bg-green-500 text-white hover:bg-green-600 shadow-sm"
+              >
+                + Yeni Hasta
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
       {/* BODY */}
       <div className="p-6">
-        {patients.length === 0 ? (
+        {(patients || []).length === 0 ? (
           <div className="text-center py-12 text-gray-500">
             <Users className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-            <p className="text-lg font-medium">Henüz hasta kaydı yok</p>
-            <p className="text-sm mt-2">Sağ üstten "Yeni Hasta" ekleyebilirsiniz.</p>
+            <p className="text-lg font-medium">Henüz hasta bulunmuyor</p>
           </div>
         ) : (
-          <div className="grid gap-4">
-            {patients.map((patient) => {
-              const patientHistory = getPatientHistory ? getPatientHistory(patient.name) : [];
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {patients.map((p) => {
+              const name = p?.name || "İsimsiz Hasta";
+              const phone = p?.phone || "";
+              const total = p?.totalVisits ?? p?.visit_count ?? 0;
+              const last = p?.lastVisit || p?.last_visit || null;
 
               return (
-                <div key={patient.id ?? patient.name} className="relative">
-                  <div className="absolute top-3 right-3 z-10">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault(); // ← EKLE
-                        onDeletePatient(patient);
-                      }}
-                      className="px-3 py-1 text-xs bg-red-100 text-red-700 rounded-lg hover:bg-red-200"
-                    >
-                      Hastayı Sil
-                    </button>
-                  </div>
-
-                  <button
-                    onClick={() => openPatientHistory(patient.name)}
-                    className="w-full bg-gradient-to-r from-pink-50 via-purple-50 to-blue-50 rounded-xl p-6 hover:shadow-lg transition-all text-left border-2 border-transparent hover:border-pink-300 group"
-                  >
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-3">
-                          <div className="bg-gradient-to-br from-pink-500 to-purple-600 p-3 rounded-xl">
-                            <User className="w-6 h-6 text-white" />
-                          </div>
-
-                          <div>
-                            <div className="font-bold text-gray-800 text-xl group-hover:text-pink-600 transition-colors">
-                              {patient.name}
-                            </div>
-
-                            {patient.phone && (
-                              <div className="text-sm text-gray-600 flex items-center gap-1 mt-1">
-                                <Phone className="w-3 h-3" />
-                                {patient.phone}
-                              </div>
-                            )}
-
-                            <div className="mt-2 space-y-2">
-                              <RiskBadge history={patientHistory} patient={patient} />
-
-                              {patient.kvkk_approved ? (
-                                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                  KVKK Formu: Var
-                                  {patient.kvkk_approved_at && (
-                                    <span className="ml-2 text-[10px] opacity-70">
-                                      (
-                                      {new Date(patient.kvkk_approved_at).toLocaleDateString('tr-TR', {
-                                        day: 'numeric',
-                                        month: 'short',
-                                        year: 'numeric',
-                                      })}
-                                      )
-                                    </span>
-                                  )}
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
-                                  KVKK Formu: Eksik
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        {patient.lastVisit && (
-                          <div className="text-sm text-gray-600 flex items-center gap-2">
-                            <Calendar className="w-4 h-4" />
-                            Son ziyaret:{' '}
-                            {new Date(patient.lastVisit).toLocaleDateString('tr-TR', {
-                              day: 'numeric',
-                              month: 'long',
-                              year: 'numeric',
-                            })}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex gap-3">
-                        <div className="text-center bg-white rounded-xl px-4 py-3 border-2 border-pink-200 shadow-sm">
-                          <div className="text-2xl font-bold text-pink-600">{patient.totalVisits}</div>
-                          <div className="text-xs text-gray-600 mt-1">Ziyaret</div>
-                        </div>
-
-                        {patient.upcomingAppointments > 0 && (
-                          <div className="text-center bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl px-4 py-3 shadow-lg">
-                            <div className="text-2xl font-bold">{patient.upcomingAppointments}</div>
-                            <div className="text-xs mt-1">Yaklaşan</div>
-                          </div>
-                        )}
+                <div key={p.id || name} className="border border-gray-200 rounded-2xl p-4 bg-white shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-gray-800 truncate">{name}</div>
+                      <div className="text-xs text-gray-500 mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                        {phone ? <span>{phone}</span> : <span className="text-gray-400">Telefon yok</span>}
+                        <span>Toplam: {total}</span>
+                        {last ? <span>Son: {new Date(last).toLocaleDateString("tr-TR")}</span> : null}
                       </div>
                     </div>
-                  </button>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {openPatientHistory && (
+                        <button
+                          type="button"
+                          onClick={() => openPatientHistory(name)}
+                          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-pink-100 text-pink-700 hover:bg-pink-200"
+                        >
+                          Hasta Profili
+                        </button>
+                      )}
+                      {onEditPatient && (
+                        <button
+                          type="button"
+                          onClick={() => onEditPatient(p)}
+                          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
+                        >
+                          Düzenle
+                        </button>
+                      )}
+                      {onDeletePatient && (
+                        <button
+                          type="button"
+                          onClick={() => onDeletePatient(p.id)}
+                          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300"
+                        >
+                          Sil
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {p?.notes ? (
+                    <div className="mt-3 text-xs text-gray-700 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                      {p.notes}
+                    </div>
+                  ) : null}
                 </div>
               );
             })}
@@ -1640,6 +1590,7 @@ function PatientsView({
     </div>
   );
 }
+
 function AllAppointmentsView({
   appointments = [],
   patients = [],
@@ -1651,16 +1602,6 @@ function AllAppointmentsView({
   const [openMap, setOpenMap] = React.useState({});
   const [expandedAptId, setExpandedAptId] = React.useState(null);
 
-  // is_patient_appointment bazen "false" string olabiliyor → güvenli kontrol
-  const isPatientApt = (a) => {
-    if (a?.is_patient_appointment === true) return true;
-    if (a?.is_patient_appointment === 1) return true;
-    if (typeof a?.is_patient_appointment === "string") {
-      return a.is_patient_appointment.toLowerCase() === "true";
-    }
-    return false;
-  };
-
   const patientPhoneMap = React.useMemo(() => {
     const map = {};
     (patients || []).forEach((p) => {
@@ -1669,47 +1610,51 @@ function AllAppointmentsView({
     return map;
   }, [patients]);
 
-  const filtered = React.useMemo(() => {
-    const all = appointments || [];
-    const q = (query || "").trim().toLowerCase();
-    if (!q) return all;
+  const patientAppointments = React.useMemo(() => {
+    return (appointments || []).filter((a) => !!a.is_patient_appointment);
+  }, [appointments]);
 
-    return all.filter((a) => {
+  const otherAppointments = React.useMemo(() => {
+    return (appointments || []).filter((a) => !a.is_patient_appointment);
+  }, [appointments]);
+
+  const statusLabel = (s) => {
+    if (s === "completed") return "Tamamlandı";
+    if (s === "cancelled") return "İptal";
+    return "Beklemede";
+  };
+
+  const statusClass = (s) => {
+    if (s === "completed") return "bg-green-100 text-green-700";
+    if (s === "cancelled") return "bg-red-100 text-red-700";
+    return "bg-gray-100 text-gray-700";
+  };
+
+  const passesQuery = React.useCallback(
+    (a, qLower) => {
+      if (!qLower) return true;
       const name = (a.patient_name || "").toLowerCase();
       const phone = (a.phone || patientPhoneMap[a.patient_name] || "").toLowerCase();
       const type = (a.type || "").toLowerCase();
       const notes = (a.notes || "").toLowerCase();
-      const title = (a.title || a.subject || "").toLowerCase();
-      return (
-        name.includes(q) ||
-        title.includes(q) ||
-        phone.includes(q) ||
-        type.includes(q) ||
-        notes.includes(q)
-      );
-    });
-  }, [appointments, query, patientPhoneMap]);
-
-  const patientFiltered = React.useMemo(
-    () => filtered.filter((a) => isPatientApt(a)),
-    [filtered]
+      return name.includes(qLower) || phone.includes(qLower) || type.includes(qLower) || notes.includes(qLower);
+    },
+    [patientPhoneMap]
   );
 
-  const otherSorted = React.useMemo(() => {
-    const arr = filtered
-      .filter((a) => !isPatientApt(a))
-      .slice()
-      .sort((x, y) => {
-        const dx = new Date(`${x.date}T${x.time || "00:00"}`).getTime();
-        const dy = new Date(`${y.date}T${y.time || "00:00"}`).getTime();
-        return dy - dx;
-      });
-    return arr;
-  }, [filtered]);
+  const filteredPatient = React.useMemo(() => {
+    const q = (query || "").trim().toLowerCase();
+    return patientAppointments.filter((a) => passesQuery(a, q));
+  }, [query, patientAppointments, passesQuery]);
 
-  const groupedPatients = React.useMemo(() => {
+  const filteredOther = React.useMemo(() => {
+    const q = (query || "").trim().toLowerCase();
+    return otherAppointments.filter((a) => passesQuery(a, q));
+  }, [query, otherAppointments, passesQuery]);
+
+  const grouped = React.useMemo(() => {
     const map = new Map();
-    for (const a of patientFiltered) {
+    for (const a of filteredPatient) {
       const key = a.patient_name || "İsimsiz Hasta";
       if (!map.has(key)) map.set(key, []);
       map.get(key).push({ ...a, status: a.status || "planned" });
@@ -1731,26 +1676,26 @@ function AllAppointmentsView({
 
     arr.sort((a, b) => b.lastTs - a.lastTs);
     return arr;
-  }, [patientFiltered]);
+  }, [filteredPatient]);
+
+  const sortedOther = React.useMemo(() => {
+    const list = (filteredOther || []).map((a) => ({ ...a, status: a.status || "planned" }));
+    list.sort((x, y) => {
+      const dx = new Date(`${x.date}T${x.time || "00:00"}`).getTime();
+      const dy = new Date(`${y.date}T${y.time || "00:00"}`).getTime();
+      return dy - dx;
+    });
+    return list;
+  }, [filteredOther]);
 
   const togglePatient = (name) => {
     setOpenMap((prev) => ({ ...prev, [name]: !prev[name] }));
-    setExpandedAptId(null); // hasta grubu kapanınca açık randevu satırı kapansın
   };
 
-  const statusLabel = (s) => {
-    if (s === "completed") return "Tamamlandı";
-    if (s === "cancelled") return "İptal";
-    return "Beklemede";
+  const formatDateText = (iso) => {
+    if (!iso) return "-";
+    return new Date(iso).toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" });
   };
-
-  const statusClass = (s) => {
-    if (s === "completed") return "bg-green-100 text-green-700";
-    if (s === "cancelled") return "bg-red-100 text-red-700";
-    return "bg-gray-100 text-gray-700";
-  };
-
-  const hasAny = groupedPatients.length > 0 || otherSorted.length > 0;
 
   return (
     <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
@@ -1777,73 +1722,122 @@ function AllAppointmentsView({
         </div>
       </div>
 
-      <div className="p-6">
-        {!hasAny ? (
-          <div className="text-center py-12 text-gray-500">
-            <FileText className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-            <p className="text-lg font-medium">Gösterilecek kayıt bulunamadı</p>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {/* Hasta randevuları (hasta bazında gruplu) */}
-            {groupedPatients.length > 0 && (
-              <div className="space-y-3">
-                {groupedPatients.map(({ patientName, list }) => {
-                  const isOpen = !!openMap[patientName];
-                  const phone = patientPhoneMap[patientName] || (list[0]?.phone || "");
+      <div className="p-6 space-y-6">
+        {/* OTHER EVENTS */}
+        {sortedOther.length > 0 && (
+          <div className="border border-gray-200 rounded-2xl overflow-hidden">
+            <div className="px-5 py-4 bg-white border-b flex items-center justify-between">
+              <div className="font-semibold text-gray-800">Diğer Etkinlikler</div>
+              <div className="text-sm text-gray-500">Toplam: {sortedOther.length}</div>
+            </div>
 
-                  return (
-                    <div key={patientName} className="border border-gray-200 rounded-2xl overflow-hidden">
+            <div className="divide-y">
+              {sortedOther.map((apt) => {
+                const dateText = formatDateText(apt.date);
+                const title = apt.patient_name || apt.title || apt.type || "Etkinlik";
+
+                return (
+                  <div key={apt.id} className="p-4 flex items-start justify-between gap-3 bg-white">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-gray-800 truncate">{title}</div>
+
+                      <div className="text-xs text-gray-500 mt-1 flex items-center gap-2 flex-wrap">
+                        <span>{dateText}</span>
+                        <span>• {apt.time || "--:--"}</span>
+                        <span className={`px-2 py-1 rounded-lg ${statusClass(apt.status)}`}>{statusLabel(apt.status)}</span>
+                      </div>
+
+                      <div className="text-xs text-gray-600 mt-1">
+                        Tür: <span className="font-medium">{apt.type || "-"}</span>
+                        {apt.duration ? <span> • Süre: {apt.duration} dk</span> : null}
+                      </div>
+
+                      {apt.notes ? (
+                        <div className="text-xs text-gray-700 mt-2 bg-gray-50 rounded-lg p-3 border border-gray-200">
+                          {apt.notes}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    {onDeleteAppointment && (
                       <button
                         type="button"
-                        onClick={() => togglePatient(patientName)}
-                        className="w-full flex items-center justify-between gap-4 p-4 bg-white hover:bg-gray-50 transition-all text-left"
+                        onClick={() => onDeleteAppointment(apt.id)}
+                        className="px-3 py-1.5 text-xs rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 shrink-0"
                       >
-                        <div className="min-w-0">
-                          <div className="font-semibold text-gray-800 truncate">{patientName}</div>
-                          <div className="text-xs text-gray-500 mt-1 flex flex-wrap gap-x-3 gap-y-1">
-                            {phone ? <span>{phone}</span> : <span className="text-gray-400">Telefon yok</span>}
-                            <span>Toplam: {list.length}</span>
-                          </div>
-                        </div>
+                        Sil
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
-                        <div className="flex items-center gap-2">
-                          {openPatientHistory && (
+        {/* PATIENT GROUPS */}
+        {grouped.length === 0 ? (
+          <div className="text-center py-12 text-gray-500">
+            <FileText className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+            <p className="text-lg font-medium">Gösterilecek randevu bulunamadı</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {grouped.map(({ patientName, list }) => {
+              const isOpen = !!openMap[patientName];
+              const phone = patientPhoneMap[patientName] || (list[0]?.phone || "");
+
+              return (
+                <div key={patientName} className="border border-gray-200 rounded-2xl overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => togglePatient(patientName)}
+                    className="w-full flex items-center justify-between gap-4 p-4 bg-white hover:bg-gray-50 transition-all text-left"
+                  >
+                    <div className="min-w-0">
+                      <div className="font-semibold text-gray-800 truncate">{patientName}</div>
+                      <div className="text-xs text-gray-500 mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                        {phone ? <span>{phone}</span> : <span className="text-gray-400">Telefon yok</span>}
+                        <span>Toplam: {list.length}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {openPatientHistory && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openPatientHistory(patientName);
+                          }}
+                          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-pink-100 text-pink-700 hover:bg-pink-200"
+                        >
+                          Hasta Profili
+                        </button>
+                      )}
+                      <div className="text-gray-400">{isOpen ? "▲" : "▼"}</div>
+                    </div>
+                  </button>
+
+                  {isOpen && (
+                    <div className="bg-gray-50 border-t border-gray-200 divide-y divide-gray-200">
+                      {list.map((apt) => {
+                        const aptTs = new Date(`${apt.date}T${apt.time || "00:00"}`).getTime();
+                        const canComplete = aptTs <= Date.now();
+                        const dateText = formatDateText(apt.date);
+                        const isExpanded = expandedAptId === apt.id;
+
+                        const showRowActions = isExpanded; // Option 2: actions only when expanded
+
+                        return (
+                          <div key={apt.id} className="p-4 bg-white">
                             <button
                               type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openPatientHistory(patientName);
-                              }}
-                              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-pink-100 text-pink-700 hover:bg-pink-200"
+                              onClick={() => setExpandedAptId((prev) => (prev === apt.id ? null : apt.id))}
+                              className="w-full text-left"
                             >
-                              Hasta Profili
-                            </button>
-                          )}
-                          <div className="text-gray-400">{isOpen ? "▲" : "▼"}</div>
-                        </div>
-                      </button>
-
-                      {isOpen && (
-                        <div className="bg-gray-50 border-t border-gray-200 divide-y divide-gray-200">
-                          {list.map((apt) => {
-                            const aptTs = new Date(`${apt.date}T${apt.time || "00:00"}`).getTime();
-                            const canComplete = aptTs <= Date.now();
-
-                            const isExpanded = expandedAptId === apt.id;
-                            const isFinal = apt.status === "completed" || apt.status === "cancelled";
-
-                            const dateText = apt.date
-                              ? new Date(apt.date).toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" })
-                              : "-";
-
-                            return (
-                              <div key={apt.id} className={`p-4 flex items-start justify-between gap-3 ${isExpanded ? "bg-white" : ""}`}>
-                                <button
-                                  type="button"
-                                  onClick={() => setExpandedAptId((prev) => (prev === apt.id ? null : apt.id))}
-                                  className="min-w-0 text-left"
-                                >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <span className="text-sm font-semibold text-gray-800">{dateText}</span>
                                     <span className="text-sm text-gray-600">• {apt.time || "--:--"}</span>
@@ -1856,44 +1850,9 @@ function AllAppointmentsView({
                                     Tür: <span className="font-medium">{apt.type || "-"}</span>
                                     {apt.duration ? <span> • Süre: {apt.duration} dk</span> : null}
                                   </div>
-
-                                  {isExpanded && apt.notes ? (
-                                    <div className="text-xs text-gray-700 mt-2 bg-white rounded-lg p-3 border border-gray-200">
-                                      {apt.notes}
-                                    </div>
-                                  ) : null}
-                                </button>
+                                </div>
 
                                 <div className="flex items-center gap-2 shrink-0">
-                                  {/* Durum değişimi sadece satır açıkken */}
-                                  {onUpdateStatus && !isFinal && isExpanded && (
-                                    <div className="flex items-center gap-2">
-                                      {canComplete && (
-                                        <button
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            onUpdateStatus(apt.id, "completed");
-                                          }}
-                                          className="px-3 py-1.5 text-xs rounded-lg bg-green-100 text-green-700 hover:bg-green-200"
-                                        >
-                                          Tamamlandı
-                                        </button>
-                                      )}
-
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          onUpdateStatus(apt.id, "cancelled");
-                                        }}
-                                        className="px-3 py-1.5 text-xs rounded-lg bg-red-100 text-red-700 hover:bg-red-200"
-                                      >
-                                        İptal
-                                      </button>
-                                    </div>
-                                  )}
-
                                   {onDeleteAppointment && (
                                     <button
                                       type="button"
@@ -1906,114 +1865,67 @@ function AllAppointmentsView({
                                       Sil
                                     </button>
                                   )}
-
-                                  {/* Chevron */}
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setExpandedAptId((prev) => (prev === apt.id ? null : apt.id));
-                                    }}
-                                    className="p-1 rounded-lg bg-white border border-gray-200 text-gray-500 hover:bg-gray-50"
-                                    title={isExpanded ? "Kapat" : "Detay"}
-                                  >
-                                    {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                                  </button>
+                                  <div className="text-gray-400 w-8 text-center">{isExpanded ? "▲" : "▼"}</div>
                                 </div>
                               </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Diğer Etkinlikler (düz liste, dropdown yok) */}
-            {otherSorted.length > 0 && (
-              <div className="border border-gray-200 rounded-2xl overflow-hidden">
-                <div className="p-4 bg-gradient-to-r from-gray-50 to-gray-100 border-b flex items-center justify-between">
-                  <div className="font-semibold text-gray-800">Diğer Etkinlikler</div>
-                  <div className="text-xs text-gray-500">Toplam: {otherSorted.length}</div>
-                </div>
-
-                <div className="divide-y divide-gray-200 bg-white">
-                  {otherSorted.map((apt) => {
-                    const dateText = apt.date
-                      ? new Date(apt.date).toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" })
-                      : "-";
-
-                    const rawTitle =
-                      (apt.title && String(apt.title).trim()) ||
-                      (apt.subject && String(apt.subject).trim()) ||
-                      (apt.patient_name && String(apt.patient_name).trim()) ||
-                      (apt.notes && String(apt.notes).trim()) ||
-                      "";
-
-                    const titleLine = rawTitle ? rawTitle.split("\n")[0].trim() : "";
-                    const shortTitle = titleLine
-                      ? titleLine.length > 70
-                        ? titleLine.slice(0, 70) + "…"
-                        : titleLine
-                      : `${apt.type || "Etkinlik"}`;
-
-                    const notesPreview =
-                      apt.notes && String(apt.notes).trim()
-                        ? String(apt.notes).trim().split("\n")[0].slice(0, 90)
-                        : "";
-
-                    return (
-                      <div key={apt.id} className="p-4 flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-sm font-semibold text-gray-900 truncate">{shortTitle}</div>
-
-                          <div className="mt-1 flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-semibold text-gray-800">{dateText}</span>
-                            <span className="text-sm text-gray-600">• {apt.time || "--:--"}</span>
-                            <span className={`px-2 py-1 text-xs rounded-lg ${statusClass(apt.status)}`}>
-                              {statusLabel(apt.status)}
-                            </span>
-                            <span className="px-2 py-1 text-xs rounded-lg bg-slate-100 text-slate-700">Diğer</span>
-                          </div>
-
-                          <div className="text-xs text-gray-600 mt-1">
-                            Tür: <span className="font-medium">{apt.type || "-"}</span>
-                            {apt.duration ? <span> • Süre: {apt.duration} dk</span> : null}
-                          </div>
-
-                          {notesPreview ? (
-                            <div className="text-xs text-gray-500 mt-2 truncate">{notesPreview}</div>
-                          ) : null}
-                        </div>
-
-                        <div className="flex items-center gap-2 shrink-0">
-                          {onDeleteAppointment && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onDeleteAppointment(apt.id);
-                              }}
-                              className="px-3 py-1.5 text-xs rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300"
-                            >
-                              Sil
                             </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+
+                            {isExpanded && (
+                              <div className="mt-3">
+                                {apt.notes ? (
+                                  <div className="text-xs text-gray-700 bg-gray-50 rounded-lg p-3 border border-gray-200">
+                                    {apt.notes}
+                                  </div>
+                                ) : (
+                                  <div className="text-xs text-gray-400">Not yok</div>
+                                )}
+
+                                {showRowActions && (
+                                  <div className="mt-3 flex items-center justify-end gap-2">
+                                    {onUpdateStatus && apt.status !== "cancelled" && (
+                                      <button
+                                        type="button"
+                                        onClick={() => onUpdateStatus(apt.id, "cancelled")}
+                                        className="px-3 py-1.5 text-xs rounded-lg bg-red-100 text-red-700 hover:bg-red-200"
+                                      >
+                                        İptal
+                                      </button>
+                                    )}
+
+                                    {onUpdateStatus && apt.status !== "completed" && apt.status !== "cancelled" && canComplete && (
+                                      <button
+                                        type="button"
+                                        onClick={() => onUpdateStatus(apt.id, "completed")}
+                                        className="px-3 py-1.5 text-xs rounded-lg bg-green-100 text-green-700 hover:bg-green-200"
+                                      >
+                                        Tamamlandı
+                                      </button>
+                                    )}
+
+                                    {onUpdateStatus && apt.status !== "completed" && apt.status !== "cancelled" && !canComplete && (
+                                      <div className="text-xs text-gray-400 px-2">
+                                        Randevu saati gelince “Tamamlandı” aktif olur
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
+              );
+            })}
           </div>
         )}
       </div>
     </div>
   );
 }
+
 // =========================== ADD APPOINTMENT MODAL ===========================
 
 function AddAppointmentModal({ selectedSlot, onClose, onSave, patients = [] }) {
@@ -2066,7 +1978,7 @@ function AddAppointmentModal({ selectedSlot, onClose, onSave, patients = [] }) {
       ? selectedSlot.is_patient_appointment 
       : true, // Database'den gelen değeri kullan, yoksa default true
     patientName: selectedSlot?.patient_name || selectedSlot?.patientName || "",
-    phone: selectedSlot?.phone || "",
+    phone: formatPhone(selectedSlot?.phone || ""),
     type: selectedSlot?.type || "Kontrol",
     notes: selectedSlot?.notes || "",
   });
@@ -2230,46 +2142,48 @@ function AddAppointmentModal({ selectedSlot, onClose, onSave, patients = [] }) {
                         setShowSuggestions(true);
                       }
                     }}
-                    onBlur={() => {
-                      setTimeout(() => setShowSuggestions(false), 150);
-                    }}
                     placeholder="Hasta adını girin"
                   />
 
                   {!isEditMode && showSuggestions && matchingPatients && matchingPatients.length > 0 && (
-                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    <div 
+                      className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+                      onMouseDown={(e) => {
+                        // Dropdown içindeki tıklamaların input'un blur eventini tetiklemesini engelle
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                    >
                       {matchingPatients.map((p) => (
-                        <button
+                        <div
                           key={p.id}
-                          type="button"
-                          onMouseDown={(e) => e.preventDefault()}
                           onClick={() => {
                             setForm((prev) => ({
                               ...prev,
                               patientName: p.name,
-                              phone: p.phone || "",
+                              phone: formatPhone(p.phone || ""),
                             }));
                             setShowSuggestions(false);
                           }}
-                          className="w-full text-left px-4 py-2 hover:bg-pink-50 flex flex-col"
+                          className="w-full text-left px-4 py-2 hover:bg-pink-50 flex flex-col cursor-pointer"
                         >
                           <span className="font-medium text-gray-800">{p.name}</span>
-                          {p.phone && <span className="text-xs text-gray-500">{p.phone}</span>}
-                        </button>
+                          {p.phone && <span className="text-xs text-gray-500">{formatPhone(p.phone)}</span>}
+                        </div>
                       ))}
                     </div>
                   )}
                 </div>
-
                 <div className="space-y-1">
                   <label className="text-xs text-gray-500">Telefon</label>
                   <input
                     type="tel"
                     className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400"
                     value={formatPhone(form.phone || "")}
-                    onChange={(e) =>
-                      setForm((prev) => ({ ...prev, phone: formatPhone(e.target.value) }))
-                    }
+                    onChange={(e) => {
+                      const formatted = formatPhone(e.target.value);
+                      setForm((prev) => ({ ...prev, phone: formatted || "" }));
+                    }}
                     placeholder="+90 5xx xxx xx xx"
                   />
                 </div>
